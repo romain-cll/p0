@@ -185,3 +185,21 @@ In e2e runs only (`P0_E2E=1`, set by the suite), the main process never shows th
   - Case 1 confirmed: a `pointermove` with `buttons: 0` during a drag makes the CA8 test fail with `expected width: 360px (±1)`.
   - Case 2 not confirmed: after a Playwright drag, focus is on `BODY`, not on the separator, so arrow keys change nothing. Stray keys are therefore an unlikely mechanism. The stray pointer moves remain the main suspect.
   - D2 adjusted: the input log is dumped for every test, not only failing ones, so that the decision rule can check for foreign input in passing tests too.
+- 2026-10-02 — D2 results: root cause **confirmed**. This supersedes "likely but not proven" in the Root cause section and the matching item in Risks.
+  - Run A (pointer in a corner, hands off): 40 tests passed, 0 failed, no foreign input.
+  - Run B (pointer at the center, moves and arrow keys): 21 passed, 19 failed. All 19 failures had 15 to 23 stray `buttons: 0` pointer moves inside the drag; the first one came 4 to 15 ms after `pointerdown`.
+  - Run C (pointer at the center, hands off): 40 passed. In 35 of the 40 tests, the window appearing under the resting pointer sent one stray move, sometimes only 2 ms before `pointerdown`. Keeping hands off is therefore not enough.
+  - Over 75 drags, a test failed exactly when a stray move landed inside the drag: 19 drags had one and all 19 failed, 56 had none and all 56 passed.
+  - Keys were seen but caused no failure. `pointerleave` was not observed.
+  - All 120 dumps show `isVisible: true` and `isFocused: true`.
+  - The approved fix (window never shown during e2e runs) removes every source seen. If task 2 needs a fallback, it must meet the same bar: no OS mouse or key event may reach the page. `showInactive()` then `blur()` does not meet it.
+- 2026-10-02 — AC5 "After" verification (task 5), amended per the D2 analysis:
+  - Install the D2 logger at the end of `resetApp()`, after `page.reload()`. Dump it for every test from the shared app instance.
+  - Run once under run B conditions (pointer at the screen center, moves and arrow keys), with a text editor in front.
+  - Expected:
+    - 0 failures;
+    - every dump has `isVisible: false` and `isFocused: false`;
+    - every drag log is exactly Playwright's path;
+    - tests without a drag log nothing;
+    - no keydown.
+  - Run C does not need to be repeated.
