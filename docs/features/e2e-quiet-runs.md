@@ -203,3 +203,9 @@ In e2e runs only (`P0_E2E=1`, set by the suite), the main process never shows th
     - tests without a drag log nothing;
     - no keydown.
   - Run C does not need to be repeated.
+- 2026-10-02 — Task 2 spike results (window never shown, one launch per test, 2 full runs):
+  - Q1 yes: 20/20 passed on both runs, with no assertion change. The WCO, content size and mouse drag assertions all hold.
+  - Q2 yes: `document.visibilityState` is `'visible'` in all 40 probes, while `isVisible()` and `isFocused()` are false.
+  - Q3 yes: the `osascript` probe needs no permission prompt. The frontmost PID was never Electron's.
+  - The app does not come to the foreground at launch, so `app.setActivationPolicy('accessory')` is not needed.
+  - `backgroundThrottling: false` is not needed and is not added.
