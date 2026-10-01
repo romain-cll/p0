@@ -10,6 +10,8 @@ function createWindow(): void {
     height: 800,
     minWidth: 1024,
     minHeight: 640,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { height: 40 },
     show: false
   })
 
