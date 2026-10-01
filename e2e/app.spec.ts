@@ -8,8 +8,9 @@ import {
   type Page
 } from '@playwright/test'
 
-// Ces tests lancent l'app buildée (`electron-vite build` => out/main/index.js) dans un vrai
-// Electron : ils exigent une session graphique macOS. Cf. `npm run test:e2e`.
+// `CA<n>` refers to the acceptance criteria of docs/features/app-shell.md.
+// These tests launch the built app (`electron-vite build` => out/main/index.js) in a real
+// Electron: they require a macOS graphical session. See `npm run test:e2e`.
 const MAIN_ENTRY = resolve('out/main/index.js')
 
 const GAP = 8
@@ -28,8 +29,8 @@ test.afterEach(async () => {
 async function launch(
   options: { colorScheme?: 'dark' | 'light' | 'no-override' } = {}
 ): Promise<{ app: ElectronApplication; page: Page }> {
-  // `'no-override'` est accepté à l'exécution (Playwright ne force alors pas le thème) mais absent
-  // du type de `electron.launch` ('dark' | 'light' | null) : cast ciblé sur cette seule valeur.
+  // `'no-override'` is accepted at runtime (Playwright then does not force the theme) but absent
+  // from the `electron.launch` type ('dark' | 'light' | null): targeted cast on that single value.
   const colorScheme = options.colorScheme as 'dark' | 'light' | null | undefined
   const app = await electron.launch({ args: [MAIN_ENTRY], colorScheme })
   apps.push(app)
@@ -38,25 +39,25 @@ async function launch(
   return { app, page }
 }
 
-const chatOf = (page: Page): Locator => page.getByRole('region', { name: 'Chat actif' })
-const panelOf = (page: Page): Locator => page.getByRole('region', { name: 'Artifacts et diff' })
+const chatOf = (page: Page): Locator => page.getByRole('region', { name: 'Active chat' })
+const panelOf = (page: Page): Locator => page.getByRole('region', { name: 'Artifacts and diff' })
 
 async function box(locator: Locator): Promise<{ x: number; y: number; width: number; height: number }> {
   const result = await locator.boundingBox()
-  if (!result) throw new Error('élément sans boîte : non affiché')
+  if (!result) throw new Error('element has no box: not displayed')
   return result
 }
 
 const widthOf = async (locator: Locator): Promise<number> => (await box(locator)).width
 
-/** Attend que la largeur de l'élément atteigne `expected` px (±1). */
+/** Waits until the element's width reaches `expected` px (±1). */
 async function expectWidth(locator: Locator, expected: number): Promise<void> {
   await expect.poll(async () => Math.abs((await widthOf(locator)) - expected) <= 1, {
-    message: `largeur attendue : ${expected}px (±1)`
+    message: `expected width: ${expected}px (±1)`
   }).toBe(true)
 }
 
-/** Glisse la poignée (role separator) à la souris, de son centre jusqu'à l'abscisse `toX`. */
+/** Drags the handle (role separator) with the mouse, from its center to the x position `toX`. */
 async function dragSeparatorTo(page: Page, toX: number): Promise<void> {
   const handle = await box(page.getByRole('separator'))
   const y = handle.y + handle.height / 2
@@ -74,10 +75,10 @@ async function setWindowSize(app: ElectronApplication, width: number, height: nu
   }, [width, height])
 }
 
-test.describe('CA1 — 4 colonnes', () => {
-  test('CA1 — les 4 régions sont visibles et rangées de gauche à droite : projets, historique, chat actif, artifacts', async () => {
+test.describe('CA1 — 4 columns', () => {
+  test('CA1 — the 4 regions are visible and laid out left to right: projects, history, active chat, artifacts', async () => {
     const { page } = await launch()
-    const names = ['Projets', 'Historique des chats', 'Chat actif', 'Artifacts et diff']
+    const names = ['Projects', 'Chat history', 'Active chat', 'Artifacts and diff']
 
     const xs: number[] = []
     for (const name of names) {
@@ -87,18 +88,18 @@ test.describe('CA1 — 4 colonnes', () => {
     }
 
     for (let i = 0; i < xs.length - 1; i++) {
-      expect(xs[i + 1], `${names[i + 1]} doit être à droite de ${names[i]}`).toBeGreaterThan(xs[i])
+      expect(xs[i + 1], `${names[i + 1]} must be to the right of ${names[i]}`).toBeGreaterThan(xs[i])
     }
   })
 })
 
-test.describe('CA8 — poignée chat / panneau', () => {
-  test('CA8 — glisser la poignée de 100 px vers la gauche élargit le panneau de 100 px et le chat suit', async () => {
+test.describe('CA8 — chat / panel handle', () => {
+  test('CA8 — dragging the handle 100 px to the left widens the panel by 100 px and the chat follows', async () => {
     const { page } = await launch()
     const panel = panelOf(page)
     const chat = chatOf(page)
 
-    await expectWidth(panel, 400) // largeur au lancement (cf. Contraintes)
+    await expectWidth(panel, 400) // width at launch (see Constraints)
     const before = await box(panel)
     const handle = await box(page.getByRole('separator'))
 
@@ -108,11 +109,11 @@ test.describe('CA8 — poignée chat / panneau', () => {
     const chatBox = await box(chat)
     const panelBox = await box(panel)
     expect(Math.abs(chatBox.x + chatBox.width + GAP - panelBox.x)).toBeLessThanOrEqual(1)
-    // le bord droit du panneau n'a pas bougé
+    // the right edge of the panel did not move
     expect(Math.abs(panelBox.x + panelBox.width - (before.x + before.width))).toBeLessThanOrEqual(1)
   })
 
-  test('CA8 — glisser la poignée tout à droite ne descend pas le panneau sous 320 px', async () => {
+  test('CA8 — dragging the handle fully to the right does not shrink the panel below 320 px', async () => {
     const { page } = await launch()
 
     await dragSeparatorTo(page, (await innerWidthOf(page)) - 1)
@@ -123,7 +124,7 @@ test.describe('CA8 — poignée chat / panneau', () => {
     expect(Math.abs(chatBox.x + chatBox.width + GAP - panelBox.x)).toBeLessThanOrEqual(1)
   })
 
-  test('CA8 — glisser la poignée tout à gauche ne descend pas le chat sous 360 px', async () => {
+  test('CA8 — dragging the handle fully to the left does not shrink the chat below 360 px', async () => {
     const { page } = await launch()
 
     await dragSeparatorTo(page, 1)
@@ -135,8 +136,8 @@ test.describe('CA8 — poignée chat / panneau', () => {
   })
 })
 
-test.describe('CA9 — taille minimale et ordre de réduction', () => {
-  test('CA9 — la fenêtre entière ne descend pas sous 1024 × 640', async () => {
+test.describe('CA9 — minimum size and shrink order', () => {
+  test('CA9 — the whole window does not shrink below 1024 × 640', async () => {
     const { app } = await launch()
 
     await setWindowSize(app, 800, 500)
@@ -150,7 +151,7 @@ test.describe('CA9 — taille minimale et ordre de réduction', () => {
     expect(minimum).toEqual(WINDOW_MIN)
   })
 
-  test('CA9 — en rétrécissant, le panneau garde sa largeur et le chat absorbe la réduction', async () => {
+  test('CA9 — when shrinking, the panel keeps its width and the chat absorbs the reduction', async () => {
     const { app, page } = await launch()
     const [initialWindowWidth] = await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].getSize()
@@ -165,7 +166,7 @@ test.describe('CA9 — taille minimale et ordre de réduction', () => {
     await expectWidth(chatOf(page), chatBefore - (initialWindowWidth - 1100))
   })
 
-  test('CA9 — panneau à 500 px puis fenêtre à 1024 px : le chat est à 360 px et le panneau reste ≥ 320 px', async () => {
+  test('CA9 — panel at 500 px then window at 1024 px: the chat is at 360 px and the panel stays ≥ 320 px', async () => {
     const { app, page } = await launch()
     const handle = await box(page.getByRole('separator'))
     await dragSeparatorTo(page, handle.x + handle.width / 2 - 100)
@@ -181,9 +182,9 @@ test.describe('CA9 — taille minimale et ordre de réduction', () => {
 
 type Rgba = [number, number, number, number]
 interface ThemeColors {
-  /** Fond calculé de `body`, converti en RGBA sRGB (le navigateur peut le renvoyer en oklch). */
+  /** Computed background of `body`, converted to sRGB RGBA (the browser may return it in oklch). */
   body: Rgba
-  /** Token `--background` résolu dans le thème courant, converti de la même façon. */
+  /** `--background` token resolved in the current theme, converted the same way. */
   token: Rgba
 }
 
@@ -208,7 +209,7 @@ async function readColors(page: Page): Promise<ThemeColors> {
   })
 }
 
-/** Le fond du body est opaque, égal au token --background, et sombre ou clair selon `theme`. */
+/** The body background is opaque, equal to the --background token, and dark or light depending on `theme`. */
 async function expectTheme(page: Page, theme: 'dark' | 'light'): Promise<void> {
   await expect
     .poll(async () => {
@@ -219,25 +220,25 @@ async function expectTheme(page: Page, theme: 'dark' | 'light'): Promise<void> {
         theme === 'dark' ? channels.every((c) => c <= 64) : channels.every((c) => c >= 192)
       const isToken = body.every((c, i) => c === token[i])
       return opaque && matchesTheme && isToken
-    }, { message: `le fond de body doit être le token --background du thème ${theme}` })
+    }, { message: `the body background must be the --background token of the ${theme} theme` })
     .toBe(true)
 }
 
-test.describe('CA10 — thème système', () => {
-  test('CA10 — macOS en mode sombre : l’app démarre en thème sombre', async () => {
+test.describe('CA10 — system theme', () => {
+  test('CA10 — macOS in dark mode: the app starts in the dark theme', async () => {
     const { page } = await launch({ colorScheme: 'dark' })
 
     await expectTheme(page, 'dark')
   })
 
-  test('CA10 — macOS en mode clair : l’app démarre en thème clair', async () => {
+  test('CA10 — macOS in light mode: the app starts in the light theme', async () => {
     const { page } = await launch({ colorScheme: 'light' })
 
     await expectTheme(page, 'light')
   })
 
-  test('CA10 — le thème bascule à chaud, sans rechargement, quand le réglage change', async () => {
-    // 'no-override' : sans cela Playwright force `light` et masque nativeTheme.themeSource.
+  test('CA10 — the theme switches live, without reloading, when the setting changes', async () => {
+    // 'no-override': without it Playwright forces `light` and masks nativeTheme.themeSource.
     const { app, page } = await launch({ colorScheme: 'no-override' })
     const setTheme = (source: 'dark' | 'light'): Promise<void> =>
       app.evaluate(({ nativeTheme }, value) => {
@@ -247,15 +248,15 @@ test.describe('CA10 — thème système', () => {
     await setTheme('light')
     await expectTheme(page, 'light')
     await page.evaluate(() => {
-      ;(window as unknown as Record<string, unknown>).__themeMarker = 'vivant'
+      ;(window as unknown as Record<string, unknown>).__themeMarker = 'alive'
     })
 
     await setTheme('dark')
     await expectTheme(page, 'dark')
-    expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).__themeMarker)).toBe('vivant')
+    expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).__themeMarker)).toBe('alive')
 
     await setTheme('light')
     await expectTheme(page, 'light')
-    expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).__themeMarker)).toBe('vivant')
+    expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).__themeMarker)).toBe('alive')
   })
 })

@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { afterEach } from 'vitest'
 
-// jsdom n'a pas de ResizeObserver (requis par react-resizable-panels).
+// jsdom has no ResizeObserver (required by react-resizable-panels).
 class ResizeObserverStub {
   observe(): void {}
   unobserve(): void {}
