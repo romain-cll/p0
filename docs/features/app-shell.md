@@ -37,7 +37,7 @@ En tant que développeur qui pilote Claude Code et d'autres CLI, je veux une app
 - Accent couleur : bleu, uniquement sur l'icône du projet sélectionné et sur l'anneau de focus. Le chat sélectionné est surligné dans une teinte neutre.
 - Composants : privilégier les composants shadcn/ui. Remplacer un composant shadcn existant par un composant maison exige la validation de Romain.
 - Style visuel inspiré de l'app Codex d'OpenAI : colonnes présentées comme des panneaux à coins arrondis séparés par un espacement (cf. croquis), bordures fines, palette neutre, police système, un seul accent couleur.
-- Données fictives en dur : 3 projets, chacun avec 3 à 7 chats aux titres distincts. L'icône d'un projet affiche l'initiale de son nom.
+- Données fictives en dur : 3 projets, chacun avec 3 à 7 chats. Les titres sont distincts au sein d'un même projet, mais un même titre peut apparaître dans deux projets différents. L'icône d'un projet affiche l'initiale de son nom.
 - Stack d'interface demandée par Romain : React + shadcn/ui. TanStack est à évaluer par l'architect : comparer TanStack Router, TanStack Start et l'absence de routeur dans le contexte Electron (avec la version web future en tête), et dire si TanStack Query a sa place dans cette US. Il doit recommander une option, que Romain tranche. Le reste de la stack (bundler, outillage de test, structure du projet) revient à l'architect et doit être validé par Romain.
 - Le code de l'interface ne dépend pas directement des API Electron, afin de pouvoir le servir plus tard dans un navigateur. La version web elle-même reste hors scope.
 - Git : gitflow `main` → `dev` → branches `feat/`, `fix/`, `docs/`, `chore/`… créées depuis `dev`, PR vers `dev`. Messages au format Conventional Commits.
@@ -178,3 +178,4 @@ Electron (dernière stable 44.x) outillé par electron-vite, avec un process mai
   - dimensions, accent couleur, CA6 (Entrée) et CA9 (ordre de réduction) précisés dans la spec.
 - 2026-10-01 — Poignée : shadcn Resizable. Le séparateur maison n'est pas un repli automatique : si Resizable ne tient pas CA8/CA9, on remonte à Romain (validée par Romain)
 - 2026-10-01 — Preset de style shadcn : Mira (validée par Romain)
+- 2026-10-01 — Titres de chats uniques au sein d'un projet seulement, pas d'un projet à l'autre ; test CA2 corrigé en conséquence (validée par Romain)
