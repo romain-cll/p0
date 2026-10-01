@@ -179,3 +179,5 @@ Electron (dernière stable 44.x) outillé par electron-vite, avec un process mai
 - 2026-10-01 — Poignée : shadcn Resizable. Le séparateur maison n'est pas un repli automatique : si Resizable ne tient pas CA8/CA9, on remonte à Romain (validée par Romain)
 - 2026-10-01 — Preset de style shadcn : Mira (validée par Romain)
 - 2026-10-01 — Titres de chats uniques au sein d'un projet seulement, pas d'un projet à l'autre ; test CA2 corrigé en conséquence (validée par Romain)
+- 2026-10-01 — Tests CA6 corrigés côté test, sans changer les assertions : en jsdom, Resizable capte les clics et empêche la saisie. Aucun contournement dans l'app (validée par Romain)
+- 2026-10-01 — electron-vite 5 stable avec Vite 7 épinglé, plutôt que la bêta 6 (validée par Romain)
