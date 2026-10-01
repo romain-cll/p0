@@ -177,4 +177,4 @@ Electron (dernière stable 44.x) outillé par electron-vite, avec un process mai
   - barre de titre macOS standard ;
   - dimensions, accent couleur, CA6 (Entrée) et CA9 (ordre de réduction) précisés dans la spec.
 - 2026-10-01 — Poignée : shadcn Resizable. Le séparateur maison n'est pas un repli automatique : si Resizable ne tient pas CA8/CA9, on remonte à Romain (validée par Romain)
-- 2026-10-01 — Preset shadcn (Nova ou Mira) : en attente de Romain, à trancher avant l'étape Vert
+- 2026-10-01 — Preset de style shadcn : Mira (validée par Romain)
