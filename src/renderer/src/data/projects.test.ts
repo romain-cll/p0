@@ -25,9 +25,12 @@ describe('données fictives', () => {
     }
   })
 
-  it('CA2 — les titres de chats sont non vides et tous distincts', () => {
-    const titles = projects.flatMap((project) => project.chats.map((chat) => chat.title))
-    expect(titles.every((title) => title.trim() !== '')).toBe(true)
-    expect(new Set(titles).size).toBe(titles.length)
+  it('CA2 — les titres de chats sont non vides et distincts au sein de chaque projet', () => {
+    // Un même titre peut apparaître dans deux projets différents : l'unicité ne porte que sur un projet.
+    for (const project of projects) {
+      const titles = project.chats.map((chat) => chat.title)
+      expect(titles.every((title) => title.trim() !== '')).toBe(true)
+      expect(new Set(titles).size).toBe(titles.length)
+    }
   })
 })
