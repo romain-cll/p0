@@ -10,7 +10,7 @@ interface ProjectRailProps {
 export function ProjectRail({ projects, selectedIndex, onSelect }: ProjectRailProps) {
   return (
     <section
-      aria-label="Projets"
+      aria-label="Projects"
       className="flex w-14 shrink-0 flex-col items-center gap-2 rounded-xl border bg-card p-2"
     >
       {projects.map((project, index) => (
