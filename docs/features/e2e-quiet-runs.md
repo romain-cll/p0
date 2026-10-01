@@ -4,13 +4,13 @@
 As Romain, I want the e2e suite to run without launching the app once per test and without taking the focus, so that I can keep working while the tests run.
 
 ## Acceptance criteria
-- [ ] AC1 — Given I am working in another app, when `npm run test:e2e` runs from start to end, then that app stays frontmost the whole time: no window of the tested app comes to the foreground.
-- [ ] AC2 — Given `npm run test:e2e` runs, when it completes, then the Electron app has been launched only once for the whole suite.
-- [ ] AC3 — Given the existing e2e tests (CA1 to CA10 of `docs/features/app-shell.md`, AC1 to AC6 of `docs/features/hidden-titlebar.md`), when they run on the shared app instance, then:
+- [x] AC1 — Given I am working in another app, when `npm run test:e2e` runs from start to end, then that app stays frontmost the whole time: no window of the tested app comes to the foreground.
+- [x] AC2 — Given `npm run test:e2e` runs, when it completes, then the Electron app has been launched only once for the whole suite.
+- [x] AC3 — Given the existing e2e tests (CA1 to CA10 of `docs/features/app-shell.md`, AC1 to AC6 of `docs/features/hidden-titlebar.md`), when they run on the shared app instance, then:
   - each test checks the same thing as before, with no assertion removed or weakened;
   - each test starts from the same initial state (window size, panel width, selected project and chat, theme), whatever the order in which tests run.
-- [ ] AC4 — Given the changes of this story, when `npm run typecheck`, `npm test` and `npm run test:e2e` run, then they all pass.
-- [ ] AC5 — Given the intermittent failures of the CA8 and CA9 drag and resize tests seen before this story, when the technical plan is written, then their root cause is identified and documented, and the fix removes that cause. Masking it is not allowed:
+- [x] AC4 — Given the changes of this story, when `npm run typecheck`, `npm test` and `npm run test:e2e` run, then they all pass.
+- [x] AC5 — Given the intermittent failures of the CA8 and CA9 drag and resize tests seen before this story, when the technical plan is written, then their root cause is identified and documented, and the fix removes that cause. Masking it is not allowed:
   - Playwright retries stay at 0, and no test is re-run until it passes;
   - no timeout is made longer;
   - no tolerance is made wider.
@@ -209,3 +209,15 @@ In e2e runs only (`P0_E2E=1`, set by the suite), the main process never shows th
   - Q3 yes: the `osascript` probe needs no permission prompt. The frontmost PID was never Electron's.
   - The app does not come to the foreground at launch, so `app.setActivationPolicy('accessory')` is not needed.
   - `backgroundThrottling: false` is not needed and is not added.
+- 2026-10-02 — Manual AC1 check, by Romain, during the AC5 "After" run (`CA8|CA9|AC6`, `--repeat-each=5`, with the temporary logger): TextEdit stayed in front, and everything he typed went into it. The temporary logger is reverted and not committed.
+- 2026-10-02 — AC5 "After" results, from the log of that run, as analyzed by the reviewer. The log itself was emptied by a later Playwright run.
+  - 40 passed, 0 failed. For comparison, D2 run B had 19 failures out of 40.
+  - All 40 dumps show `isVisible: false` and `isFocused: false`.
+  - 0 keydown and 0 pointerleave.
+  - All 25 drags follow exactly Playwright's path: 575 events, all on y = 416.
+  - The 15 tests without a drag logged nothing.
+- 2026-10-02 — AC2 count: `DEBUG=pw:api npx playwright test | grep -c "=> electron.launch started"` prints `1`, with 20 passed in 2.6 s.
+- 2026-10-02 — Review OK. Follow-ups for a later story, since the test file is frozen here:
+  - give the `osascript` probe in `expectInBackground()` a timeout, so that a future macOS permission prompt makes the run fail instead of hang;
+  - avoid the extra TypeErrors in `afterAll` when `electron.launch` fails.
+- Still to check manually (with the hidden title bar checklist): `npm run dev` still shows the window and gives it the focus.
