@@ -4,16 +4,16 @@
 En tant que développeur qui pilote Claude Code et d'autres CLI, je veux une app desktop avec un layout en 4 colonnes (projets, historique des chats, chat actif, artifacts/diff), afin d'avoir la structure de navigation sur laquelle brancher les CLI ensuite.
 
 ## Critères d'acceptation
-- [ ] CA1 — Étant donné l'app lancée, quand la fenêtre principale s'ouvre, alors elle affiche 4 colonnes de gauche à droite : rail des projets (icônes), historique des chats, chat actif, panneau Artifacts/Diff.
-- [ ] CA2 — Étant donné l'app lancée, quand la fenêtre s'ouvre, alors le rail affiche une icône par projet fictif (3 projets), le premier projet est sélectionné, la colonne historique affiche ses chats et aucun chat n'est sélectionné.
-- [ ] CA3 — Étant donné un projet sélectionné, quand je clique sur l'icône d'un autre projet, alors cette icône passe à l'état sélectionné, l'ancienne ne l'est plus, la colonne historique affiche les titres des chats de ce projet et uniquement eux, et aucun chat n'est sélectionné.
-- [ ] CA4 — Étant donné la liste des chats d'un projet, quand je clique sur un chat, alors il passe à l'état sélectionné et le chat sélectionné auparavant ne l'est plus.
-- [ ] CA5 — Étant donné n'importe quel projet et n'importe quel chat sélectionnés (ou aucun), quand je regarde la colonne chat actif, alors elle affiche l'empty state « Aucun message pour l'instant » et aucun message.
-- [ ] CA6 — Étant donné la zone de saisie en bas du chat actif, quand je tape du texte, alors le texte s'affiche dans la zone et la touche Entrée y insère un retour à la ligne ; le bouton d'envoi reste désactivé, et ni un clic dessus ni la touche Entrée n'ajoutent de message ni ne vident la zone.
-- [ ] CA7 — Étant donné n'importe quel état de l'app, quand je regarde le panneau Artifacts/Diff, alors il affiche l'empty state « Aucun artifact ni diff » et aucun autre contenu.
-- [ ] CA8 — Étant donné la poignée située entre le chat actif et le panneau Artifacts/Diff, quand je la fais glisser horizontalement, alors la largeur du panneau suit le curseur et le chat actif occupe l'espace restant, sans que le panneau descende sous 320 px ni que le chat actif descende sous 360 px.
-- [ ] CA9 — Étant donné la fenêtre de l'app, quand je la redimensionne, alors la fenêtre entière (barre de titre comprise) ne descend pas sous 1024 × 640 px ; quand elle rétrécit, le panneau Artifacts/Diff garde sa largeur et le chat actif se réduit jusqu'à 360 px, puis seulement ensuite le panneau se réduit, jusqu'à 320 px minimum.
-- [ ] CA10 — Étant donné macOS réglé en mode sombre (resp. clair), quand l'app démarre, alors elle s'affiche en thème sombre (resp. clair) ; et quand je change ce réglage pendant que l'app tourne, alors le thème bascule sans redémarrage.
+- [x] CA1 — Étant donné l'app lancée, quand la fenêtre principale s'ouvre, alors elle affiche 4 colonnes de gauche à droite : rail des projets (icônes), historique des chats, chat actif, panneau Artifacts/Diff.
+- [x] CA2 — Étant donné l'app lancée, quand la fenêtre s'ouvre, alors le rail affiche une icône par projet fictif (3 projets), le premier projet est sélectionné, la colonne historique affiche ses chats et aucun chat n'est sélectionné.
+- [x] CA3 — Étant donné un projet sélectionné, quand je clique sur l'icône d'un autre projet, alors cette icône passe à l'état sélectionné, l'ancienne ne l'est plus, la colonne historique affiche les titres des chats de ce projet et uniquement eux, et aucun chat n'est sélectionné.
+- [x] CA4 — Étant donné la liste des chats d'un projet, quand je clique sur un chat, alors il passe à l'état sélectionné et le chat sélectionné auparavant ne l'est plus.
+- [x] CA5 — Étant donné n'importe quel projet et n'importe quel chat sélectionnés (ou aucun), quand je regarde la colonne chat actif, alors elle affiche l'empty state « Aucun message pour l'instant » et aucun message.
+- [x] CA6 — Étant donné la zone de saisie en bas du chat actif, quand je tape du texte, alors le texte s'affiche dans la zone et la touche Entrée y insère un retour à la ligne ; le bouton d'envoi reste désactivé, et ni un clic dessus ni la touche Entrée n'ajoutent de message ni ne vident la zone.
+- [x] CA7 — Étant donné n'importe quel état de l'app, quand je regarde le panneau Artifacts/Diff, alors il affiche l'empty state « Aucun artifact ni diff » et aucun autre contenu.
+- [x] CA8 — Étant donné la poignée située entre le chat actif et le panneau Artifacts/Diff, quand je la fais glisser horizontalement, alors la largeur du panneau suit le curseur et le chat actif occupe l'espace restant, sans que le panneau descende sous 320 px ni que le chat actif descende sous 360 px.
+- [x] CA9 — Étant donné la fenêtre de l'app, quand je la redimensionne, alors la fenêtre entière (barre de titre comprise) ne descend pas sous 1024 × 640 px ; quand elle rétrécit, le panneau Artifacts/Diff garde sa largeur et le chat actif se réduit jusqu'à 360 px, puis seulement ensuite le panneau se réduit, jusqu'à 320 px minimum.
+- [x] CA10 — Étant donné macOS réglé en mode sombre (resp. clair), quand l'app démarre, alors elle s'affiche en thème sombre (resp. clair) ; et quand je change ce réglage pendant que l'app tourne, alors le thème bascule sans redémarrage.
 
 ## Hors scope
 - Branchement de Claude Code ou de tout autre CLI : aucun processus lancé.
