@@ -5,6 +5,7 @@ import App from './App'
 import { projects } from './data/projects'
 
 // `CA<n>` refers to the acceptance criteria of docs/features/app-shell.md.
+// `AC<n>` refers to the acceptance criteria of docs/features/hidden-titlebar.md.
 // Assumed contracts (see the technical plan, tasks 5 to 8):
 // - `App` is the default export of ./App;
 // - `projects` (./data/projects): { name: string; chats: { title: string }[] }[];
@@ -236,5 +237,21 @@ describe('CA7 — Artifacts/Diff panel', () => {
     await user.keyboard('hello')
 
     expect(region('Artifacts and diff').textContent).toBe(EMPTY_ARTIFACTS)
+  })
+})
+
+describe('AC2 — title bar band', () => {
+  it('AC2 — the empty band comes before the 4 regions in DOM order and is inside none of them', () => {
+    render(<App />)
+
+    const band = screen.getByTestId('title-bar')
+    const elements = REGION_NAMES.map((name) => region(name))
+
+    for (const element of elements) {
+      expect(band.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(element.contains(band)).toBe(false)
+      expect(band.contains(element)).toBe(false)
+    }
+    expect(band).toBeEmptyDOMElement()
   })
 })
