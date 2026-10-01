@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import App from './App'
@@ -165,12 +165,24 @@ describe('CA6 — zone de saisie', () => {
     within(region('Chat actif')).getByRole('button', { name: 'Envoyer' })
   const textarea = (): HTMLElement => within(region('Chat actif')).getByRole('textbox')
 
+  // jsdom renvoie des getBoundingClientRect nuls : le listener `pointerdown` (capture, document) de
+  // react-resizable-panels prend alors tout clic dans le groupe pour un clic sur la poignée,
+  // focalise le séparateur et fait preventDefault. `user.type` / `user.click` sur la zone de saisie
+  // taperait dans le vide : on la focalise explicitement puis on tape au clavier.
+  const focusTextarea = (): void => {
+    act(() => textarea().focus())
+  }
+  const typeInTextarea = async (user: ReturnType<typeof userEvent.setup>, text: string): Promise<void> => {
+    focusTextarea()
+    await user.keyboard(text)
+  }
+
   it('CA6 — le texte tapé s’affiche dans la zone et le bouton Envoyer est désactivé', async () => {
     const user = userEvent.setup()
     render(<App />)
 
     expect(sendButton()).toBeDisabled()
-    await user.type(textarea(), 'bonjour')
+    await typeInTextarea(user, 'bonjour')
 
     expect(textarea()).toHaveValue('bonjour')
     expect(sendButton()).toBeDisabled()
@@ -180,7 +192,7 @@ describe('CA6 — zone de saisie', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.type(textarea(), 'bonjour{Enter}monde')
+    await typeInTextarea(user, 'bonjour{Enter}monde')
 
     expect(textarea()).toHaveValue('bonjour\nmonde')
   })
@@ -188,12 +200,13 @@ describe('CA6 — zone de saisie', () => {
   it('CA6 — ni un clic sur Envoyer ni Entrée n’ajoutent de message ni ne vident la zone', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await user.type(textarea(), 'bonjour')
+    await typeInTextarea(user, 'bonjour')
 
     await user.click(sendButton())
     expect(textarea()).toHaveValue('bonjour')
     expect(sendButton()).toBeDisabled()
 
+    focusTextarea() // le clic sur Envoyer a pu déplacer le focus
     await user.keyboard('{Enter}')
     // Entrée n'envoie rien : la zone garde « bonjour » (au plus suivi d'un retour à la ligne)
     expect((textarea() as HTMLTextAreaElement).value.startsWith('bonjour')).toBe(true)
@@ -218,7 +231,8 @@ describe('CA7 — panneau Artifacts/Diff', () => {
 
     await user.click(projectButton(1))
     await user.click(chatButton(titlesOf(1)[0]))
-    await user.type(within(region('Chat actif')).getByRole('textbox'), 'bonjour')
+    act(() => within(region('Chat actif')).getByRole('textbox').focus()) // cf. CA6 : jsdom + poignée
+    await user.keyboard('bonjour')
 
     expect(region('Artifacts et diff').textContent).toBe(EMPTY_ARTIFACTS)
   })

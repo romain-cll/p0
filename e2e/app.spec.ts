@@ -28,7 +28,10 @@ test.afterEach(async () => {
 async function launch(
   options: { colorScheme?: 'dark' | 'light' | 'no-override' } = {}
 ): Promise<{ app: ElectronApplication; page: Page }> {
-  const app = await electron.launch({ args: [MAIN_ENTRY], ...options })
+  // `'no-override'` est accepté à l'exécution (Playwright ne force alors pas le thème) mais absent
+  // du type de `electron.launch` ('dark' | 'light' | null) : cast ciblé sur cette seule valeur.
+  const colorScheme = options.colorScheme as 'dark' | 'light' | null | undefined
+  const app = await electron.launch({ args: [MAIN_ENTRY], colorScheme })
   apps.push(app)
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
