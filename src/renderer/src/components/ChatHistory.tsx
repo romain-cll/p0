@@ -10,7 +10,7 @@ interface ChatHistoryProps {
 export function ChatHistory({ chats, selectedIndex, onSelect }: ChatHistoryProps) {
   return (
     <section
-      aria-label="Historique des chats"
+      aria-label="Chat history"
       className="flex w-60 shrink-0 flex-col gap-2 overflow-y-auto rounded-xl border bg-card p-2"
     >
       {chats.map((chat, index) => (

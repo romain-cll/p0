@@ -11,28 +11,28 @@ export const projects: Project[] = [
   {
     name: 'Atlas',
     chats: [
-      { title: 'Migrer la base vers PostgreSQL' },
-      { title: 'Corriger le bug de pagination' },
-      { title: 'Ajouter un export CSV' },
-      { title: 'Revoir les règles de cache' }
+      { title: 'Move the database to PostgreSQL' },
+      { title: 'Fix the pagination bug' },
+      { title: 'Add a CSV export' },
+      { title: 'Review the caching rules' }
     ]
   },
   {
     name: 'Borealis',
     chats: [
-      { title: 'Refondre la page de connexion' },
-      { title: 'Écrire les tests de l’API' },
-      { title: 'Optimiser le temps de build' }
+      { title: 'Redesign the login page' },
+      { title: 'Write the API tests' },
+      { title: 'Reduce build time' }
     ]
   },
   {
     name: 'Cobalt',
     chats: [
-      { title: 'Préparer la release 2.0' },
-      { title: 'Documenter le module d’auth' },
-      { title: 'Nettoyer les dépendances' },
-      { title: 'Ajouter le mode hors ligne' },
-      { title: 'Diagnostiquer une fuite mémoire' }
+      { title: 'Prepare the 2.0 release' },
+      { title: 'Document the auth module' },
+      { title: 'Clean up dependencies' },
+      { title: 'Add offline mode' },
+      { title: 'Investigate a memory leak' }
     ]
   }
 ]
