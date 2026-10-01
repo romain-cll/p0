@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import {
   _electron as electron,
@@ -10,8 +11,12 @@ import {
 
 // `CA<n>` refers to the acceptance criteria of docs/features/app-shell.md.
 // `AC<n>` refers to the acceptance criteria of docs/features/hidden-titlebar.md.
-// These tests launch the built app (`electron-vite build` => out/main/index.js) in a real
+// These tests run the built app (`electron-vite build` => out/main/index.js) in a real
 // Electron: they require a macOS graphical session. See `npm run test:e2e`.
+// The app is launched once for the whole file (`beforeAll`) and stays hidden: `P0_E2E=1` tells
+// the main process never to show its window (docs/features/e2e-quiet-runs.md). Each test starts
+// with `resetApp()`. The hooks check e2e-quiet-runs AC1 (`expectInBackground`): the window is
+// neither visible nor focused, and the app is not the frontmost one.
 const MAIN_ENTRY = resolve('out/main/index.js')
 
 const GAP = 8
@@ -19,24 +24,82 @@ const PANEL_MIN = 320
 const CHAT_MIN = 360
 const WINDOW_MIN: [number, number] = [1024, 640]
 
-const apps: ElectronApplication[] = []
+// Named so that they do not shadow the `{ app, page }` the tests destructure.
+let electronApp: ElectronApplication
+let appPage: Page
 
-test.afterEach(async () => {
-  while (apps.length > 0) {
-    await apps.pop()?.close()
+const INITIAL_SIZE: [number, number] = [1280, 800]
+const INITIAL_PANEL_WIDTH = 400
+
+/** e2e-quiet-runs AC1: the window is never shown or focused, and the app is not the frontmost one. */
+async function expectInBackground(): Promise<void> {
+  const window = await electronApp.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0]
+    return { visible: win.isVisible(), focused: win.isFocused() }
+  })
+  expect(window, 'the window must be neither visible nor focused').toEqual({
+    visible: false,
+    focused: false
+  })
+
+  const frontmostPid = Number(
+    execFileSync('osascript', [
+      '-l',
+      'JavaScript',
+      '-e',
+      "ObjC.import('AppKit'); $.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier"
+    ])
+      .toString()
+      .trim()
+  )
+  expect(frontmostPid, 'the app must not be the frontmost one').not.toBe(electronApp.process().pid)
+}
+
+test.beforeAll(async () => {
+  electronApp = await electron.launch({
+    args: [MAIN_ENTRY],
+    env: { ...process.env, P0_E2E: '1' } as Record<string, string>
+  })
+  appPage = await electronApp.firstWindow()
+  await appPage.waitForLoadState('domcontentloaded')
+  await expectInBackground()
+})
+
+test.afterAll(async () => {
+  try {
+    await expectInBackground()
+  } finally {
+    await electronApp.close()
   }
 })
 
-async function launch(
-  options: { colorScheme?: 'dark' | 'light' | 'no-override' } = {}
+/**
+ * Puts the shared app back in its initial state: window size, system theme, color scheme
+ * emulation, and a fresh page (project 1 selected, no chat, panel at its default width).
+ * `colorScheme` defaults to `'light'`, like `electron.launch`; `null` turns the emulation off.
+ */
+async function resetApp(
+  options: { colorScheme?: 'dark' | 'light' | null } = {}
 ): Promise<{ app: ElectronApplication; page: Page }> {
-  // `'no-override'` is accepted at runtime (Playwright then does not force the theme) but absent
-  // from the `electron.launch` type ('dark' | 'light' | null): targeted cast on that single value.
-  const colorScheme = options.colorScheme as 'dark' | 'light' | null | undefined
-  const app = await electron.launch({ args: [MAIN_ENTRY], colorScheme })
-  apps.push(app)
-  const page = await app.firstWindow()
+  const { colorScheme = 'light' } = options
+  const app = electronApp
+  const page = appPage
+
+  await app.evaluate(({ BrowserWindow, nativeTheme }, size) => {
+    nativeTheme.themeSource = 'system'
+    BrowserWindow.getAllWindows()[0].setSize(size[0], size[1])
+  }, INITIAL_SIZE)
+  await expect
+    .poll(async () => ({
+      size: await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getSize()),
+      inner: await page.evaluate(() => [window.innerWidth, window.innerHeight])
+    }))
+    .toEqual({ size: INITIAL_SIZE, inner: INITIAL_SIZE })
+
+  await page.emulateMedia({ colorScheme })
+  await page.reload()
   await page.waitForLoadState('domcontentloaded')
+  await expectWidth(panelOf(page), INITIAL_PANEL_WIDTH)
   return { app, page }
 }
 
@@ -78,7 +141,7 @@ async function setWindowSize(app: ElectronApplication, width: number, height: nu
 
 test.describe('CA1 — 4 columns', () => {
   test('CA1 — the 4 regions are visible and laid out left to right: projects, history, active chat, artifacts', async () => {
-    const { page } = await launch()
+    const { page } = await resetApp()
     const names = ['Projects', 'Chat history', 'Active chat', 'Artifacts and diff']
 
     const xs: number[] = []
@@ -96,7 +159,7 @@ test.describe('CA1 — 4 columns', () => {
 
 test.describe('CA8 — chat / panel handle', () => {
   test('CA8 — dragging the handle 100 px to the left widens the panel by 100 px and the chat follows', async () => {
-    const { page } = await launch()
+    const { page } = await resetApp()
     const panel = panelOf(page)
     const chat = chatOf(page)
 
@@ -115,7 +178,7 @@ test.describe('CA8 — chat / panel handle', () => {
   })
 
   test('CA8 — dragging the handle fully to the right does not shrink the panel below 320 px', async () => {
-    const { page } = await launch()
+    const { page } = await resetApp()
 
     await dragSeparatorTo(page, (await innerWidthOf(page)) - 1)
 
@@ -126,7 +189,7 @@ test.describe('CA8 — chat / panel handle', () => {
   })
 
   test('CA8 — dragging the handle fully to the left does not shrink the chat below 360 px', async () => {
-    const { page } = await launch()
+    const { page } = await resetApp()
 
     await dragSeparatorTo(page, 1)
 
@@ -139,7 +202,7 @@ test.describe('CA8 — chat / panel handle', () => {
 
 test.describe('CA9 — minimum size and shrink order', () => {
   test('CA9 — the whole window does not shrink below 1024 × 640', async () => {
-    const { app } = await launch()
+    const { app } = await resetApp()
 
     await setWindowSize(app, 800, 500)
 
@@ -153,7 +216,7 @@ test.describe('CA9 — minimum size and shrink order', () => {
   })
 
   test('CA9 — when shrinking, the panel keeps its width and the chat absorbs the reduction', async () => {
-    const { app, page } = await launch()
+    const { app, page } = await resetApp()
     const [initialWindowWidth] = await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].getSize()
     )
@@ -168,7 +231,7 @@ test.describe('CA9 — minimum size and shrink order', () => {
   })
 
   test('CA9 — panel at 500 px then window at 1024 px: the chat is at 360 px and the panel stays ≥ 320 px', async () => {
-    const { app, page } = await launch()
+    const { app, page } = await resetApp()
     const handle = await box(page.getByRole('separator'))
     await dragSeparatorTo(page, handle.x + handle.width / 2 - 100)
     await expectWidth(panelOf(page), 500)
@@ -227,20 +290,20 @@ async function expectTheme(page: Page, theme: 'dark' | 'light'): Promise<void> {
 
 test.describe('CA10 — system theme', () => {
   test('CA10 — macOS in dark mode: the app starts in the dark theme', async () => {
-    const { page } = await launch({ colorScheme: 'dark' })
+    const { page } = await resetApp({ colorScheme: 'dark' })
 
     await expectTheme(page, 'dark')
   })
 
   test('CA10 — macOS in light mode: the app starts in the light theme', async () => {
-    const { page } = await launch({ colorScheme: 'light' })
+    const { page } = await resetApp({ colorScheme: 'light' })
 
     await expectTheme(page, 'light')
   })
 
   test('CA10 — the theme switches live, without reloading, when the setting changes', async () => {
-    // 'no-override': without it Playwright forces `light` and masks nativeTheme.themeSource.
-    const { app, page } = await launch({ colorScheme: 'no-override' })
+    // `null`: without it Playwright forces `light` and masks nativeTheme.themeSource.
+    const { app, page } = await resetApp({ colorScheme: null })
     const setTheme = (source: 'dark' | 'light'): Promise<void> =>
       app.evaluate(({ nativeTheme }, value) => {
         nativeTheme.themeSource = value
@@ -305,7 +368,7 @@ async function readBandBackground(page: Page): Promise<Rgba> {
 
 test.describe('AC1 — no native title bar', () => {
   test('AC1 — the content fills the whole window: content size equals window size', async () => {
-    const { app, page } = await launch()
+    const { app, page } = await resetApp()
 
     const contentSizeOf = (): Promise<number[]> =>
       app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getContentSize())
@@ -322,7 +385,7 @@ test.describe('AC1 — no native title bar', () => {
 
 test.describe('AC2 — title bar band', () => {
   test('AC2 — the band is at the top, full width and 40 px high', async () => {
-    const { page } = await launch()
+    const { page } = await resetApp()
     const band = bandOf(page)
 
     await expect(band).toBeVisible()
@@ -334,7 +397,7 @@ test.describe('AC2 — title bar band', () => {
   })
 
   test('AC2 — the 4 regions start right under the band, at 40 px', async () => {
-    const { page } = await launch()
+    const { page } = await resetApp()
 
     await expect(bandOf(page)).toBeVisible()
     for (const [index, region] of regionsOf(page).entries()) {
@@ -345,7 +408,7 @@ test.describe('AC2 — title bar band', () => {
 
   for (const theme of ['dark', 'light'] as const) {
     test(`AC2 — ${theme} mode: the band shows the window background (--background token)`, async () => {
-      const { page } = await launch({ colorScheme: theme })
+      const { page } = await resetApp({ colorScheme: theme })
 
       await expect(bandOf(page)).toBeVisible()
       await expectTheme(page, theme)
@@ -358,7 +421,7 @@ test.describe('AC2 — title bar band', () => {
   }
 
   test('AC2 — the native buttons sit in a 40 px area on the left (Window Controls Overlay)', async () => {
-    const { page } = await launch()
+    const { page } = await resetApp()
 
     const overlay = await page.evaluate(() => {
       const wco = (
@@ -381,7 +444,7 @@ test.describe('AC2 — title bar band', () => {
 
 test.describe('AC3 — dragging the band', () => {
   test('AC3 — the band is a drag region and none of the 4 regions is', async () => {
-    const { page } = await launch()
+    const { page } = await resetApp()
     const appRegionOf = (locator: Locator): Promise<string> =>
       locator.evaluate((element) => getComputedStyle(element).getPropertyValue('app-region'))
 
@@ -395,7 +458,7 @@ test.describe('AC3 — dragging the band', () => {
 
 test.describe('AC4 — window buttons', () => {
   test('AC4 — the window can be closed, minimized and zoomed', async () => {
-    const { app } = await launch()
+    const { app } = await resetApp()
 
     const capabilities = await app.evaluate(({ BrowserWindow }) => {
       const win = BrowserWindow.getAllWindows()[0]
@@ -431,13 +494,13 @@ test.describe('AC6 — minimum size with the band', () => {
   }
 
   test('AC6 — window at 1024 × 640: the band counts inside it, chat ≥ 360 px, panel ≥ 320 px, nothing past the bottom', async () => {
-    const { app, page } = await launch()
+    const { app, page } = await resetApp()
 
     await expectMinimumLayout(app, page)
   })
 
   test('AC6 — panel widened to 500 px then window at 1024 × 640: same checks', async () => {
-    const { app, page } = await launch()
+    const { app, page } = await resetApp()
     const handle = await box(page.getByRole('separator'))
     await dragSeparatorTo(page, handle.x + handle.width / 2 - 100)
     await expectWidth(panelOf(page), 500)
