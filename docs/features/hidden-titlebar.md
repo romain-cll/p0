@@ -141,3 +141,10 @@ Double-click: macOS should handle it natively on a drag region and follow the sy
   - green button keeps the native macOS behavior (click: full screen, Option-click: zoom); AC4 reworded;
   - double-click follows the macOS setting; AC5 reworded.
 - 2026-10-01 — Task 1 spike reduced to the automatable questions (Q2, Q3, and Q4 for Playwright only), run by the dev before the red tests and not committed. The real double-click (Q1, Q4 for a real double-click) is checked manually by Romain at delivery; if it fails, the fallback above applies (approved by Romain)
+- 2026-10-01 — Spike results (Electron 44.5.1, macOS 26), so no e2e assertion is dropped and task 5 is not done unless Romain's real double-click check fails:
+  - Q2 yes: computed `app-region` of the band is `drag`.
+  - Q3 yes: `navigator.windowControlsOverlay.visible` is true and `getTitlebarAreaRect()` is `{x: 78, y: 0, width: 1202, height: 40}` at 1280 px. Without the options, `visible` is false.
+  - Q4 (Playwright) yes: `before-mouse-event` receives `mouseDown` with `clickCount: 2`. A Playwright double-click does not zoom the window, which confirms there is no e2e for the native AC5 path.
+  - Content size equals window size with the options (it is 32 px shorter without them).
+  - At 1024 × 640, the 4 regions start at y = 40 and are 592 px tall; the widths are 56, 240, 360 and 328 px.
+  - Computed colors are in `oklch()`, so the band background check must reuse the `readColors` canvas conversion.
