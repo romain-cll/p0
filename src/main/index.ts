@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow } from 'electron'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
+const isE2E = process.env['P0_E2E'] === '1'
 
 function createWindow(): void {
   const window = new BrowserWindow({
@@ -15,7 +16,11 @@ function createWindow(): void {
     show: false
   })
 
-  window.once('ready-to-show', () => window.show())
+  // The e2e suite sets P0_E2E=1: the window is never shown, so it never takes the focus.
+  // See docs/features/e2e-quiet-runs.md.
+  if (!isE2E) {
+    window.once('ready-to-show', () => window.show())
+  }
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     void window.loadURL(process.env['ELECTRON_RENDERER_URL'])
