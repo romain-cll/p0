@@ -181,3 +181,7 @@ In e2e runs only (`P0_E2E=1`, set by the suite), the main process never shows th
   - AC2 applies to a passing run (Playwright relaunches the app after a failure);
   - the Dock icon and the Cmd-Tab entry stay during the run.
 - 2026-10-01 — Root cause diagnostics: D1 and D2 (runs A, B and C) both run before any fix. Romain performs the D2 runs himself (approved by Romain)
+- 2026-10-01 — D1 results:
+  - Case 1 confirmed: a `pointermove` with `buttons: 0` during a drag makes the CA8 test fail with `expected width: 360px (±1)`.
+  - Case 2 not confirmed: after a Playwright drag, focus is on `BODY`, not on the separator, so arrow keys change nothing. Stray keys are therefore an unlikely mechanism. The stray pointer moves remain the main suspect.
+  - D2 adjusted: the input log is dumped for every test, not only failing ones, so that the decision rule can check for foreign input in passing tests too.
