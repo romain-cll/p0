@@ -1,29 +1,43 @@
 import { Button } from '@/components/ui/button'
-import type { Chat } from '@/data/projects'
+import { Empty, EmptyTitle } from '@/components/ui/empty'
+import type { Chat } from '@/lib/chats'
 
 interface ChatHistoryProps {
-  chats: Chat[]
-  selectedIndex: number | null
-  onSelect: (index: number) => void
+  /** `null` when there is no project. */
+  chats: Chat[] | null
+  selectedId: string | null
+  onSelect: (id: string) => void
+  onCreate: () => void
 }
 
-export function ChatHistory({ chats, selectedIndex, onSelect }: ChatHistoryProps) {
+export function ChatHistory({ chats, selectedId, onSelect, onCreate }: ChatHistoryProps) {
   return (
     <section
       aria-label="Chat history"
       className="flex w-60 shrink-0 flex-col gap-2 overflow-y-auto rounded-xl border bg-card p-2"
     >
-      {chats.map((chat, index) => (
-        <Button
-          key={chat.title}
-          variant="ghost"
-          aria-current={index === selectedIndex ? 'true' : undefined}
-          className="w-full justify-start overflow-hidden aria-[current=true]:bg-muted"
-          onClick={() => onSelect(index)}
-        >
-          <span className="truncate">{chat.title}</span>
-        </Button>
-      ))}
+      {chats === null ? (
+        <Empty>
+          <EmptyTitle>Add a project to get started</EmptyTitle>
+        </Empty>
+      ) : (
+        <>
+          <Button variant="outline" className="w-full" onClick={onCreate}>
+            New chat
+          </Button>
+          {chats.map((chat) => (
+            <Button
+              key={chat.id}
+              variant="ghost"
+              aria-current={chat.id === selectedId ? 'true' : undefined}
+              className="w-full justify-start overflow-hidden aria-[current=true]:bg-muted"
+              onClick={() => onSelect(chat.id)}
+            >
+              <span className="truncate">{chat.title}</span>
+            </Button>
+          ))}
+        </>
+      )}
     </section>
   )
 }

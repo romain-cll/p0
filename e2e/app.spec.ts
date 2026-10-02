@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process'
-import { resolve } from 'node:path'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename, join, resolve } from 'node:path'
 import {
   _electron as electron,
   expect,
@@ -11,6 +13,8 @@ import {
 
 // `CA<n>` refers to the acceptance criteria of docs/features/app-shell.md.
 // `AC<n>` refers to the acceptance criteria of docs/features/hidden-titlebar.md.
+// `chat AC<n>` refers to the acceptance criteria of docs/features/claude-code-chat.md (story 1:
+// chat AC1, AC2 and AC3; the chat tests come with story 2).
 // These tests run the built app (`electron-vite build` => out/main/index.js) in a real
 // Electron: they require a macOS graphical session. See `npm run test:e2e`.
 // The app is launched once for the whole file (`beforeAll`) and stays hidden: `P0_E2E=1` tells
@@ -18,6 +22,13 @@ import {
 // with `resetApp()`. The hooks check e2e-quiet-runs AC1 (`expectInBackground`): the window is
 // neither visible nor focused, and the app is not the frontmost one.
 const MAIN_ENTRY = resolve('out/main/index.js')
+
+// claude-code-chat: the app reads and writes its projects in `<userData>/projects.json`. The e2e gives
+// it a throwaway userData (`P0_USER_DATA_DIR`, read by the main process only under `P0_E2E=1`), so it
+// never touches the real projects. The project folders the picker returns live in the same dir.
+let tempDir: string
+let userDataDir: string
+let projectsFile: string
 
 const GAP = 8
 const PANEL_MIN = 320
@@ -84,9 +95,12 @@ async function expectInBackground(): Promise<void> {
 }
 
 test.beforeAll(async () => {
+  tempDir = realpathSync(mkdtempSync(join(tmpdir(), 'p0-e2e-')))
+  userDataDir = join(tempDir, 'user-data')
+  projectsFile = join(userDataDir, 'projects.json')
   electronApp = await electron.launch({
     args: [MAIN_ENTRY],
-    env: { ...process.env, P0_E2E: '1' } as Record<string, string>
+    env: { ...process.env, P0_E2E: '1', P0_USER_DATA_DIR: userDataDir } as Record<string, string>
   })
   appPage = await electronApp.firstWindow()
   await appPage.waitForLoadState('domcontentloaded')
@@ -96,17 +110,21 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   // e2e-guard-hardening AC2: `electron.launch` threw in `beforeAll`, its error is the one reported,
   // and there is no app to check or close.
-  if (!electronApp) return
+  if (!electronApp) {
+    if (tempDir) rmSync(tempDir, { recursive: true, force: true })
+    return
+  }
   try {
     await expectInBackground()
   } finally {
     await electronApp.close()
+    rmSync(tempDir, { recursive: true, force: true })
   }
 })
 
 /**
  * Puts the shared app back in its initial state: window size, system theme, color scheme
- * emulation, and a fresh page (project 1 selected, no chat, panel at its default width).
+ * emulation, no project (`projects.json` deleted), and a fresh page (no chat, panel at its default width).
  * `colorScheme` defaults to `'light'`, like `electron.launch`; `null` turns the emulation off.
  */
 async function resetApp(
@@ -128,11 +146,59 @@ async function resetApp(
     .toEqual({ size: INITIAL_SIZE, inner: INITIAL_SIZE })
 
   await page.emulateMedia({ colorScheme })
+  // chat AC2 and AC3: the projects live on disk, so a test starts from an empty `projects.json`.
+  rmSync(projectsFile, { force: true })
   await page.reload()
   await page.waitForLoadState('domcontentloaded')
   await expectWidth(panelOf(page), INITIAL_PANEL_WIDTH)
   return { app, page }
 }
+
+/**
+ * chat AC1: the native folder picker cannot be driven by Playwright. The main process calls
+ * `dialog.showOpenDialog` when the request arrives, so replacing it here is enough: no production
+ * code changes and no native UI opens. `null` simulates Cancel.
+ */
+async function stubFolderPicker(app: ElectronApplication, folder: string | null): Promise<void> {
+  // The stub must never run if the app would use the real userData: it could add to the user's projects.
+  const userData = await app.evaluate(({ app: electron }) => electron.getPath('userData'))
+  expect(userData, 'the e2e must run on its own userData (P0_USER_DATA_DIR)').toBe(userDataDir)
+  await app.evaluate(({ dialog }, picked) => {
+    const counter = globalThis as unknown as { __pickerCalls: number }
+    counter.__pickerCalls = 0
+    dialog.showOpenDialog = (async () => {
+      counter.__pickerCalls++
+      return { canceled: picked === null, filePaths: picked === null ? [] : [picked] }
+    }) as unknown as typeof dialog.showOpenDialog
+  }, folder)
+}
+
+/** How many times the stubbed picker was opened since the last `stubFolderPicker`. */
+const pickerCallsOf = (app: ElectronApplication): Promise<number> =>
+  app.evaluate(() => (globalThis as unknown as { __pickerCalls: number }).__pickerCalls)
+
+/** A real, empty folder `<tempDir>/projects/<name>`, like the one a user would pick. */
+function makeFolder(name: string): string {
+  const folder = join(tempDir, 'projects', name)
+  mkdirSync(folder, { recursive: true })
+  return folder
+}
+
+const railOf = (page: Page): Locator => page.getByRole('region', { name: 'Projects' })
+const historyOf = (page: Page): Locator => page.getByRole('region', { name: 'Chat history' })
+const addProjectButtonOf = (page: Page): Locator => railOf(page).getByRole('button', { name: 'Add project' })
+/** The project buttons, in rail order: all the buttons of the rail except "Add project". */
+const projectButtonsOf = (page: Page): Locator =>
+  railOf(page).locator('button:not([aria-label="Add project"])')
+
+/** Stubs the picker to return `folder`, clicks "Add project", and waits for the project to show up. */
+async function addProject(app: ElectronApplication, page: Page, folder: string): Promise<void> {
+  await stubFolderPicker(app, folder)
+  await addProjectButtonOf(page).click()
+  await expect(railOf(page).getByRole('button', { name: basename(folder), exact: true })).toBeVisible()
+}
+
+const storedProjects = (): string[] => JSON.parse(readFileSync(projectsFile, 'utf8')) as string[]
 
 const chatOf = (page: Page): Locator => page.getByRole('region', { name: 'Active chat' })
 const panelOf = (page: Page): Locator => page.getByRole('region', { name: 'Artifacts and diff' })
@@ -537,5 +603,98 @@ test.describe('AC6 — minimum size with the band', () => {
     await expectWidth(panelOf(page), 500)
 
     await expectMinimumLayout(app, page)
+  })
+})
+
+// --- claude-code-chat, story 1: projects ---
+test.describe('chat AC1 — adding a project', () => {
+  test('chat AC1 — picking a folder adds a project named after it, with its initial, selected and stored', async () => {
+    const { app, page } = await resetApp()
+    const folder = makeFolder('atlas')
+
+    await addProject(app, page, folder)
+
+    const button = railOf(page).getByRole('button', { name: 'atlas', exact: true })
+    await expect(button).toHaveText('A')
+    await expect(button).toHaveAttribute('aria-current', 'true')
+    await expect(projectButtonsOf(page)).toHaveCount(1)
+    await expect.poll(storedProjects).toEqual([folder])
+    await expectInBackground()
+  })
+
+  test('chat AC1 — cancelling the picker changes nothing', async () => {
+    const { app, page } = await resetApp()
+    await addProject(app, page, makeFolder('atlas'))
+    await addProject(app, page, makeFolder('borealis'))
+    await expect(railOf(page).getByRole('button', { name: 'borealis', exact: true })).toHaveAttribute(
+      'aria-current',
+      'true'
+    )
+    const before = storedProjects()
+
+    await stubFolderPicker(app, null)
+    await addProjectButtonOf(page).click()
+
+    // the picker was opened once; then the app has had the time to (wrongly) react
+    await expect.poll(() => pickerCallsOf(app)).toBe(1)
+    await page.waitForTimeout(300)
+    await expect(projectButtonsOf(page)).toHaveCount(2)
+    await expect(railOf(page).getByRole('button', { name: 'borealis', exact: true })).toHaveAttribute(
+      'aria-current',
+      'true'
+    )
+    expect(storedProjects()).toEqual(before)
+  })
+
+  test('chat AC1 — picking a folder that is already a project selects it and adds no duplicate', async () => {
+    const { app, page } = await resetApp()
+    const atlas = makeFolder('atlas')
+    await addProject(app, page, atlas)
+    const borealis = makeFolder('borealis')
+    await addProject(app, page, borealis)
+
+    await addProject(app, page, atlas)
+
+    await expect(railOf(page).getByRole('button', { name: 'atlas', exact: true })).toHaveAttribute(
+      'aria-current',
+      'true'
+    )
+    await expect(projectButtonsOf(page)).toHaveCount(2)
+    expect(storedProjects()).toEqual([atlas, borealis])
+  })
+})
+
+test.describe('chat AC2 — projects kept between launches', () => {
+  // One launch only (e2e-quiet-runs): `page.reload()` makes the renderer read `projects.json` again.
+  // The quit and relaunch itself is in the manual checklist of the spec.
+  test('chat AC2 — after a reload the same projects are in the rail, in the same order, the first one selected', async () => {
+    const { app, page } = await resetApp()
+    const folders = [makeFolder('borealis'), makeFolder('atlas'), makeFolder('cobalt')]
+    for (const folder of folders) await addProject(app, page, folder)
+    await expect(railOf(page).getByRole('button', { name: 'cobalt', exact: true })).toHaveAttribute(
+      'aria-current',
+      'true'
+    )
+
+    await page.reload()
+    await page.waitForLoadState('domcontentloaded')
+
+    await expect(projectButtonsOf(page)).toHaveCount(3)
+    await expect(projectButtonsOf(page)).toHaveText(['B', 'A', 'C'])
+    await expect(projectButtonsOf(page).nth(0)).toHaveAttribute('aria-current', 'true')
+    await expect(projectButtonsOf(page).nth(1)).not.toHaveAttribute('aria-current', 'true')
+    await expect(projectButtonsOf(page).nth(2)).not.toHaveAttribute('aria-current', 'true')
+    expect(storedProjects()).toEqual(folders)
+  })
+})
+
+test.describe('chat AC3 — no project', () => {
+  test('chat AC3 — the rail shows only the "+" button, and the history and the chat show "Add a project to get started"', async () => {
+    const { page } = await resetApp()
+
+    await expect(railOf(page).getByRole('button')).toHaveCount(1)
+    await expect(addProjectButtonOf(page)).toBeVisible()
+    await expect(historyOf(page).getByText('Add a project to get started')).toBeVisible()
+    await expect(chatOf(page).getByText('Add a project to get started')).toBeVisible()
   })
 })
