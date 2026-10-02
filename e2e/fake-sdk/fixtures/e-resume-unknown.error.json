@@ -1,0 +1,9 @@
+{
+  "thrown": {
+    "name": "Error",
+    "message": "Claude Code returned an error result: No conversation found with session ID: 00000000-0000-4000-8000-000000000005"
+  },
+  "stderr": [
+    "No conversation found with session ID: 00000000-0000-4000-8000-000000000005\n"
+  ]
+}

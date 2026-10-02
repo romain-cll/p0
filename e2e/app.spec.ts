@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import {
   _electron as electron,
   expect,
@@ -14,7 +15,17 @@ import {
 // `CA<n>` refers to the acceptance criteria of docs/features/app-shell.md.
 // `AC<n>` refers to the acceptance criteria of docs/features/hidden-titlebar.md.
 // `chat AC<n>` refers to the acceptance criteria of docs/features/claude-code-chat.md (story 1:
-// chat AC1, AC2 and AC3; the chat tests come with story 2).
+// chat AC1, AC2 and AC3; story 2: chat AC5, AC6, AC7, AC10, AC11, AC12 and AC13).
+// `chat guard` is the navigation guard of the same spec (story 2, task 10).
+//
+// claude-code-chat, story 2: the app runs its real Claude Code adapter on the fake SDK `query` of
+// e2e/fake-sdk/query.mjs (`P0_FAKE_SDK_QUERY`, read by the main process only under `P0_E2E=1`), and the
+// `PATH` of the app holds only the dummy `claude` of e2e/fake-sdk/bin, which refuses to run: no test can reach
+// the real Claude Code. The fake's reply reads `You said: <prompt>`, `Mode: <mode>`, `Folder: <project>`,
+// `Earlier in this chat: <earlier prompts | nothing>`; the markers `[tools]`, `[slow]`, `[auth]` and `[crash]`
+// in a prompt pick a scenario (see the header of query.mjs).
+// The conversation is the element with role `log` of the "Active chat" region; its items are the children of
+// the log that have some text (`logItemsOf`). An error carries `role="alert"`.
 // These tests run the built app (`electron-vite build` => out/main/index.js) in a real
 // Electron: they require a macOS graphical session. See `npm run test:e2e`.
 // The app is launched once for the whole file (`beforeAll`) and stays hidden: `P0_E2E=1` tells
@@ -29,6 +40,11 @@ const MAIN_ENTRY = resolve('out/main/index.js')
 let tempDir: string
 let userDataDir: string
 let projectsFile: string
+
+// claude-code-chat, story 2: the fake SDK and the `PATH` of the app (the dummy `claude` first, then system dirs).
+const FAKE_SDK_DIR = resolve('e2e/fake-sdk')
+const FAKE_PATH = `${join(FAKE_SDK_DIR, 'bin')}:/usr/bin:/bin:/usr/sbin:/sbin`
+const FAKE_QUERY = join(FAKE_SDK_DIR, 'query.mjs')
 
 const GAP = 8
 const PANEL_MIN = 320
@@ -100,11 +116,27 @@ test.beforeAll(async () => {
   projectsFile = join(userDataDir, 'projects.json')
   electronApp = await electron.launch({
     args: [MAIN_ENTRY],
-    env: { ...process.env, P0_E2E: '1', P0_USER_DATA_DIR: userDataDir } as Record<string, string>
+    env: {
+      ...process.env,
+      PATH: FAKE_PATH,
+      P0_E2E: '1',
+      P0_USER_DATA_DIR: userDataDir,
+      P0_FAKE_SDK_QUERY: FAKE_QUERY,
+      P0_FAKE_CLAUDE_STATE: join(tempDir, 'fake-claude-state')
+    } as Record<string, string>
   })
   appPage = await electronApp.firstWindow()
   await appPage.waitForLoadState('domcontentloaded')
   await expectInBackground()
+  // The real Claude Code must never run: the main process has the dummy-only PATH and the fake SDK hook.
+  const mainEnv = await electronApp.evaluate(() => ({
+    PATH: process.env.PATH,
+    fakeQuery: process.env.P0_FAKE_SDK_QUERY,
+    e2e: process.env.P0_E2E
+  }))
+  expect(mainEnv.PATH, 'the main process must run with the fake-only PATH').toBe(FAKE_PATH)
+  expect(mainEnv.fakeQuery, 'the main process must load the fake SDK query').toBe(FAKE_QUERY)
+  expect(mainEnv.e2e).toBe('1')
 })
 
 test.afterAll(async () => {
@@ -124,7 +156,9 @@ test.afterAll(async () => {
 
 /**
  * Puts the shared app back in its initial state: window size, system theme, color scheme
- * emulation, no project (`projects.json` deleted), and a fresh page (no chat, panel at its default width).
+ * emulation, the fake-only `PATH` of the main process, no project (`projects.json` deleted), and a fresh
+ * page (no chat, panel at its default width). The reload also stops any run left over by the previous test
+ * (the stream is cancelled).
  * `colorScheme` defaults to `'light'`, like `electron.launch`; `null` turns the emulation off.
  */
 async function resetApp(
@@ -146,6 +180,10 @@ async function resetApp(
     .toEqual({ size: INITIAL_SIZE, inner: INITIAL_SIZE })
 
   await page.emulateMedia({ colorScheme })
+  // chat AC13: a test may have changed the PATH of the main process to hide the CLI.
+  await app.evaluate((_electron, path) => {
+    process.env.PATH = path
+  }, FAKE_PATH)
   // chat AC2 and AC3: the projects live on disk, so a test starts from an empty `projects.json`.
   rmSync(projectsFile, { force: true })
   await page.reload()
@@ -197,6 +235,52 @@ async function addProject(app: ElectronApplication, page: Page, folder: string):
   await addProjectButtonOf(page).click()
   await expect(railOf(page).getByRole('button', { name: basename(folder), exact: true })).toBeVisible()
 }
+
+// --- claude-code-chat, story 2: chats ---
+const messageBoxOf = (page: Page): Locator => chatOf(page).getByRole('textbox', { name: 'Message' })
+const sendButtonOf = (page: Page): Locator => chatOf(page).getByRole('button', { name: 'Send' })
+const stopButtonOf = (page: Page): Locator => chatOf(page).getByRole('button', { name: 'Stop' })
+const logOf = (page: Page): Locator => chatOf(page).getByRole('log')
+/** The items of the conversation: the children of the log that have some text. */
+const logItemsOf = (page: Page): Locator => logOf(page).locator(':scope > *').filter({ hasText: /\S/ })
+const alertsOf = (page: Page): Locator => logOf(page).getByRole('alert')
+/** A chat of the history, by its title (the first line of its first message). */
+const chatButtonOf = (page: Page, title: string): Locator =>
+  historyOf(page).getByRole('button', { name: title, exact: true })
+
+/** Clicks "New chat" (the first button of the history) and waits for the empty conversation. */
+async function newChat(page: Page): Promise<void> {
+  await historyOf(page).getByRole('button', { name: 'New chat', exact: true }).first().click()
+  await expect(chatOf(page).getByText('No messages yet')).toBeVisible()
+  await expect(messageBoxOf(page)).toBeEnabled()
+}
+
+/** Types `text` in the input of the active chat and presses Enter; waits for the input to be cleared. */
+async function send(page: Page, text: string): Promise<void> {
+  const box = messageBoxOf(page)
+  await box.fill(text)
+  await box.press('Enter')
+  await expect(box).toHaveValue('')
+}
+
+/** A fresh app with project `atlas` selected and a new chat open. */
+async function openChat(): Promise<{ app: ElectronApplication; page: Page; folder: string }> {
+  const { app, page } = await resetApp()
+  const folder = makeFolder('atlas')
+  await addProject(app, page, folder)
+  await newChat(page)
+  return { app, page, folder }
+}
+
+/** Waits until the chat is not answering any more: Send is back and Stop is gone. */
+async function expectIdle(page: Page): Promise<void> {
+  await expect(sendButtonOf(page)).toBeVisible()
+  await expect(stopButtonOf(page)).toHaveCount(0)
+}
+
+/** How many `tick N` chunks of a `[slow]` reply the conversation shows. */
+const ticksIn = async (page: Page): Promise<number> =>
+  ((await logOf(page).innerText()).match(/tick \d+/g) ?? []).length
 
 const storedProjects = (): string[] => JSON.parse(readFileSync(projectsFile, 'utf8')) as string[]
 
@@ -696,5 +780,331 @@ test.describe('chat AC3 — no project', () => {
     await expect(addProjectButtonOf(page)).toBeVisible()
     await expect(historyOf(page).getByText('Add a project to get started')).toBeVisible()
     await expect(chatOf(page).getByText('Add a project to get started')).toBeVisible()
+  })
+})
+
+// --- claude-code-chat, story 2: chat with Claude Code, Plan mode ---
+test.describe('chat AC5 — sending a message', () => {
+  test('chat AC5 — Enter sends: the message shows, the input is cleared, and Claude Code answers in the project folder', async () => {
+    const { page, folder } = await openChat()
+
+    await send(page, 'hello')
+
+    await expect(logItemsOf(page)).toHaveCount(2)
+    await expect(logItemsOf(page).first()).toContainText('hello')
+    await expect(logOf(page)).toContainText('You said: hello')
+    await expect(logOf(page)).toContainText('Mode: plan')
+    await expect(logOf(page)).toContainText(`Folder: ${folder}`)
+    await expect(logOf(page)).toContainText('Earlier in this chat: nothing')
+    await expect(chatButtonOf(page, 'hello')).toBeVisible()
+    await expectIdle(page)
+    await expectInBackground()
+  })
+
+  test('chat AC5 — clicking Send sends too', async () => {
+    const { page } = await openChat()
+
+    await messageBoxOf(page).fill('by click')
+    await sendButtonOf(page).click({ timeout: 5_000 })
+
+    await expect(logOf(page)).toContainText('You said: by click')
+    await expect(messageBoxOf(page)).toHaveValue('')
+  })
+
+  test('chat AC5 — Shift+Enter inserts a line break; an empty or whitespace-only message cannot be sent', async () => {
+    const { page } = await openChat()
+    const box = messageBoxOf(page)
+    await expect(sendButtonOf(page)).toBeDisabled()
+
+    await box.press('Enter')
+    await box.fill('   ')
+    await expect(sendButtonOf(page)).toBeDisabled()
+    await box.press('Enter')
+    await page.waitForTimeout(300)
+    await expect(logItemsOf(page)).toHaveCount(0)
+
+    await box.fill('hello')
+    await box.press('Shift+Enter')
+    await box.pressSequentially('world')
+    await expect(box).toHaveValue('hello\nworld')
+    await expect(logItemsOf(page)).toHaveCount(0)
+    await box.press('Enter')
+
+    await expect(box).toHaveValue('')
+    await expect(logOf(page)).toContainText(/You said: hello\s+world/)
+  })
+
+  test('chat AC5 — the reply appears progressively: part of the text shows while Stop is visible', async () => {
+    const { page } = await openChat()
+
+    await send(page, '[slow] go')
+
+    await expect(stopButtonOf(page)).toBeVisible()
+    await expect(sendButtonOf(page)).toHaveCount(0)
+    await expect(logOf(page)).toContainText('tick 1')
+    const early = await ticksIn(page)
+    await expect(logOf(page)).toContainText('tick 4')
+    expect(await ticksIn(page)).toBeGreaterThan(early)
+    await expect(stopButtonOf(page)).toBeVisible()
+  })
+})
+
+test.describe('chat AC6 — the same conversation', () => {
+  test('chat AC6 — a second message has the first one, and another chat has only its own', async () => {
+    const { page } = await openChat()
+
+    await send(page, 'first')
+    await expect(logOf(page)).toContainText('Earlier in this chat: nothing')
+    await expectIdle(page)
+    await send(page, 'second')
+    await expect(logOf(page)).toContainText('You said: second')
+    await expect(logOf(page)).toContainText('Earlier in this chat: first')
+    await expectIdle(page)
+    await send(page, 'third')
+    await expect(logOf(page)).toContainText('Earlier in this chat: first | second')
+    await expectIdle(page)
+
+    await newChat(page)
+    await send(page, 'other')
+
+    await expect(logOf(page)).toContainText('You said: other')
+    await expect(logOf(page)).toContainText('Earlier in this chat: nothing')
+    await expect(logOf(page)).not.toContainText('first')
+    await expectIdle(page)
+    await chatButtonOf(page, 'first').click()
+    await expect(logOf(page)).toContainText('Earlier in this chat: first | second')
+    await expect(logOf(page)).not.toContainText('other')
+  })
+})
+
+test.describe('chat AC7 — action lines', () => {
+  test('chat AC7 — [tools]: the 3 action lines show in order, between the text segments', async () => {
+    const { page } = await openChat()
+
+    await send(page, '[tools] go')
+
+    await expect(logItemsOf(page)).toHaveText([
+      /\[tools\] go/,
+      /Let me look at the project\./,
+      /^Read README\.md$/,
+      /Now the change\./,
+      /^Edit src\/index\.ts$/,
+      /^Bash npm test$/,
+      /Done\./
+    ])
+    await expectIdle(page)
+  })
+})
+
+test.describe('chat AC10 — Plan mode', () => {
+  test('chat AC10 — a new chat runs in Plan, the default the adapter announces, and leaves the project folder untouched', async () => {
+    const { page, folder } = await openChat()
+
+    await send(page, 'please create a file')
+
+    await expect(logOf(page)).toContainText('Mode: plan')
+    await expectIdle(page)
+    await expect(alertsOf(page)).toHaveCount(0)
+    expect(readdirSync(folder)).toEqual([])
+  })
+})
+
+test.describe('chat AC11 — Stop', () => {
+  test('chat AC11 — the Stop button stops the answer: the text stays, "Interrupted" shows, and a new message can be sent', async () => {
+    const { page } = await openChat()
+    await send(page, '[slow] count')
+    await expect(logOf(page)).toContainText('tick 2')
+
+    await stopButtonOf(page).click()
+
+    await expect(logItemsOf(page).last()).toHaveText('Interrupted')
+    await expect(logOf(page)).toContainText('tick 1')
+    await expectIdle(page)
+    await expect(alertsOf(page)).toHaveCount(0)
+    const kept = await ticksIn(page)
+    await page.waitForTimeout(400)
+    expect(await ticksIn(page), 'the answer must really have stopped').toBe(kept)
+
+    await send(page, 'next')
+    await expect(logOf(page)).toContainText('You said: next')
+    await expect(logOf(page)).toContainText('Earlier in this chat: [slow] count')
+    await expectIdle(page)
+  })
+
+  test('chat AC11 — Esc stops the answer too', async () => {
+    const { page } = await openChat()
+    await send(page, '[slow] count')
+    await expect(logOf(page)).toContainText('tick 2')
+
+    await messageBoxOf(page).press('Escape')
+
+    await expect(logItemsOf(page).last()).toHaveText('Interrupted')
+    await expect(logOf(page)).toContainText('tick 1')
+    await expectIdle(page)
+    await expect(alertsOf(page)).toHaveCount(0)
+  })
+})
+
+test.describe('chat AC12 — background answers', () => {
+  /** The first `n` ticks, with no gap: nothing received was lost. */
+  const ticksFromOne = (n: number): string => Array.from({ length: n }, (_, i) => `tick ${i + 1}`).join(' ')
+
+  test('chat AC12 — switching to another chat and back: the answer kept going, and the other chat answered in the meantime', async () => {
+    const { page } = await openChat()
+    await send(page, '[slow] chat a')
+    await expect(logOf(page)).toContainText('tick 2')
+
+    await newChat(page)
+    await send(page, 'hello b')
+    await expect(logOf(page)).toContainText('You said: hello b')
+    await expectIdle(page)
+    await page.waitForTimeout(1500)
+    await chatButtonOf(page, '[slow] chat a').click()
+
+    await expect(logOf(page)).toContainText(ticksFromOne(12))
+    await expect(stopButtonOf(page)).toBeVisible()
+    await expect(alertsOf(page)).toHaveCount(0)
+  })
+
+  test('chat AC12 — switching to another project and back: the answer kept going and shows everything received', async () => {
+    const { app, page } = await openChat()
+    await send(page, '[slow] chat a')
+    await expect(logOf(page)).toContainText('tick 2')
+
+    await addProject(app, page, makeFolder('borealis'))
+    await expect(logItemsOf(page)).toHaveCount(0)
+    await page.waitForTimeout(1500)
+    await railOf(page).getByRole('button', { name: 'atlas', exact: true }).click()
+    await chatButtonOf(page, '[slow] chat a').click()
+
+    await expect(logOf(page)).toContainText(ticksFromOne(12))
+    await expect(stopButtonOf(page)).toBeVisible()
+  })
+})
+
+test.describe('chat AC13 — errors', () => {
+  test('chat AC13 — CLI not installed: the chat says so, and once it is found again a new message works', async () => {
+    const { app, page } = await openChat()
+    await app.evaluate(() => {
+      process.env.PATH = '/usr/bin:/bin'
+    })
+
+    try {
+      await send(page, 'hello')
+
+      await expect(alertsOf(page)).toHaveCount(1)
+      await expect(alertsOf(page)).toContainText('Claude Code CLI not found')
+      await expectIdle(page)
+    } finally {
+      await app.evaluate((_electron, path) => {
+        process.env.PATH = path
+      }, FAKE_PATH)
+    }
+
+    await send(page, 'hello again')
+    await expect(logOf(page)).toContainText('You said: hello again')
+    await expectIdle(page)
+  })
+
+  test('chat AC13 — not logged in: Claude Code\'s own message shows once, other chats still answer, and the chat can send again', async () => {
+    const { page } = await openChat()
+
+    await send(page, '[auth] hello')
+
+    await expect(alertsOf(page)).toHaveCount(1)
+    await expect(alertsOf(page)).toContainText('Not logged in')
+    await expectIdle(page)
+
+    await newChat(page)
+    await send(page, 'hello from b')
+    await expect(logOf(page)).toContainText('You said: hello from b')
+    await expect(alertsOf(page)).toHaveCount(0)
+    await expectIdle(page)
+
+    await chatButtonOf(page, '[auth] hello').click()
+    await expect(alertsOf(page)).toHaveCount(1)
+    await send(page, 'fixed now')
+    await expect(logOf(page)).toContainText('You said: fixed now')
+    await expectIdle(page)
+  })
+
+  test('chat AC13 — any error Claude Code returns shows its text, and the app keeps working', async () => {
+    const { page } = await openChat()
+
+    await send(page, '[crash] hello')
+
+    await expect(alertsOf(page)).toHaveCount(1)
+    await expect(alertsOf(page)).toContainText('fake crash')
+    await expectIdle(page)
+    await send(page, 'next')
+    await expect(logOf(page)).toContainText('You said: next')
+  })
+})
+
+// --- claude-code-chat, story 2, task 10: navigation guard ---
+// The build is loaded from `file://`. The guard must keep every other page out of the window, and every
+// window closed. Dropping a file from Finder onto the window is checked by hand (Playwright cannot do it).
+test.describe('chat guard — the window only ever shows the app', () => {
+  test('chat guard — a foreign page cannot replace the app', async () => {
+    const { app, page } = await resetApp()
+    const appUrl = page.url()
+    const foreign = join(tempDir, 'foreign.html')
+    writeFileSync(foreign, '<!doctype html><title>foreign</title><p>foreign page</p>')
+    // The probe is registered after the app's own listener, so it sees the state the guard left.
+    await app.evaluate(({ BrowserWindow }) => {
+      const record = globalThis as unknown as { __navigation?: { url: string; prevented: boolean } }
+      delete record.__navigation
+      BrowserWindow.getAllWindows()[0].webContents.once('will-navigate', (event, legacyUrl) => {
+        const url = (event as unknown as { url?: string }).url ?? legacyUrl
+        record.__navigation = { url, prevented: event.defaultPrevented }
+      })
+    })
+
+    try {
+      await page.evaluate((url) => {
+        location.href = url
+      }, pathToFileURL(foreign).href)
+
+      await expect
+        .poll(() =>
+          app.evaluate(() => (globalThis as unknown as { __navigation?: unknown }).__navigation ?? null)
+        )
+        .not.toBeNull()
+      const navigation = await app.evaluate(
+        () => (globalThis as unknown as { __navigation: { url: string; prevented: boolean } }).__navigation
+      )
+      expect(navigation.url).toBe(pathToFileURL(foreign).href)
+      expect(navigation.prevented, 'the guard must prevent the navigation').toBe(true)
+      expect(page.url()).toBe(appUrl)
+      for (const name of REGION_NAMES) await expect(page.getByRole('region', { name })).toBeVisible()
+    } finally {
+      // Only matters when the guard is missing: bring the app back so the other tests can run.
+      if (page.url() !== appUrl) {
+        await app.evaluate(({ BrowserWindow }, url) => BrowserWindow.getAllWindows()[0].loadURL(url), appUrl)
+        await page.waitForLoadState('domcontentloaded')
+      }
+    }
+  })
+
+  test('chat guard — the page cannot open a window', async () => {
+    const { app, page } = await resetApp()
+    const appWindowId = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].id)
+
+    try {
+      // `show=no` is a window.open feature Electron turns into a window option: even with no guard,
+      // the extra window stays hidden, so this test never takes the focus (Decision 16).
+      const opened = await page.evaluate(() => window.open('about:blank', '_blank', 'show=no') !== null)
+      await page.waitForTimeout(300)
+
+      const windows = await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().map((window) => ({ id: window.id, visible: window.isVisible() }))
+      )
+      // one assertion, so that a failure shows both: `opened: false` is window.open returning null (denied)
+      expect({ opened, windows }).toEqual({ opened: false, windows: [{ id: appWindowId, visible: false }] })
+    } finally {
+      await app.evaluate(({ BrowserWindow }, keep) => {
+        for (const window of BrowserWindow.getAllWindows()) if (window.id !== keep) window.destroy()
+      }, appWindowId)
+    }
   })
 })
