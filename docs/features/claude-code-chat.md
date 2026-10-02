@@ -800,3 +800,6 @@ The tasks are grouped by the stories proposed in Decision 1. If Romain keeps a s
   - Decision 15 = A: the navigation guard covers the main window; no API token.
   - Decision 16 = A: an e2e test checks that no window can be opened.
   - In Plan mode, the action line for the plan file Claude writes under `~/.claude/plans/` is shown like any other action.
+- 2026-10-02 — Story 2, green step (approved by Romain):
+  - The e2e test "chat guard — a foreign page cannot replace the app" is wrong on the test side. After a blocked navigation, Playwright keeps it pending, and every retrying locator then waits forever. The guard itself works. The tester replaces the final visibility check with one that does not wait for navigation; what it checks stays the same. This gives a new red commit.
+  - The sent message is trimmed at both ends, and a whitespace-only message is not sent.
