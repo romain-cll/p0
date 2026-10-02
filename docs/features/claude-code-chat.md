@@ -536,3 +536,12 @@ The tasks are grouped by the stories proposed in Decision 1. If Romain keeps a s
   - Spec ambiguity 1 = B: AC10 reworded.
   - Spec ambiguity 2 = A: AC8 lists the five modes.
   - Spec ambiguities 3 to 10: as recommended.
+- 2026-10-02 — Spike S2 results (Electron 44.5.1, window hidden): Q1 to Q4 all yes, so Decision 6 = C, the `p0://` scheme.
+  - Lines arrive one by one, about every 200 ms, both in dev (`http://localhost:5173`) and in the build (`file://`).
+  - Facts that tasks 4, 5 and 11 must follow:
+    - Privileges: `supportFetchAPI` and `corsEnabled` are both required; without them the fetch fails with `Failed to fetch`. `stream` is not needed.
+    - No `OPTIONS` preflight reaches the handler, and no CORS response header is needed. The `OPTIONS` route and `Access-Control-Allow-Origin` of the plan are dropped.
+    - CSP: `connect-src 'self' p0:` is required.
+    - The handler sees no `Origin` header. Security relies on the project path and mode checks, as planned.
+    - `page.reload()` calls the stream's `cancel()`, about 10 ms later, but does not abort `request.signal`. Stop-on-reload must hang on `cancel()`.
+    - URL parsing: `p0://api/runs` gives `host === 'api'` and `pathname === '/runs'`.
