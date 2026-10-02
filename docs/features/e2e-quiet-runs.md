@@ -220,4 +220,4 @@ In e2e runs only (`P0_E2E=1`, set by the suite), the main process never shows th
 - 2026-10-02 — Review OK. Follow-ups for a later story, since the test file is frozen here:
   - give the `osascript` probe in `expectInBackground()` a timeout, so that a future macOS permission prompt makes the run fail instead of hang;
   - avoid the extra TypeErrors in `afterAll` when `electron.launch` fails.
-- Still to check manually (with the hidden title bar checklist): `npm run dev` still shows the window and gives it the focus.
+- 2026-10-02 — Constraint checked manually by Romain: `npm run dev` still shows the window and gives it the focus.

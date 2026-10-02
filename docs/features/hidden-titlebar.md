@@ -4,16 +4,16 @@
 As a macOS user, I want the native title bar hidden and only the window buttons kept, so that the app looks like Codex or the Claude desktop app.
 
 ## Acceptance criteria
-- [ ] AC1 — Given the app on macOS, when the main window opens, then no native title bar is shown (no title text, no title bar background), and the three window buttons (close, minimize, zoom) are visible at the top-left of the window.
-- [ ] AC2 — Given the main window, when it opens, then:
+- [x] AC1 — Given the app on macOS, when the main window opens, then no native title bar is shown (no title text, no title bar background), and the three window buttons (close, minimize, zoom) are visible at the top-left of the window.
+- [x] AC2 — Given the main window, when it opens, then:
   - a 40 px band spans the full width at the top of the window, above the four columns;
   - the band has the same background as the window, in light and dark mode;
   - the window buttons sit in this band, vertically centered;
   - no column overlaps the band.
-- [ ] AC3 — Given the main window, when I press and drag anywhere in the band outside the window buttons, then the window moves with the pointer.
-- [ ] AC4 — Given the window buttons, when I click them, then they behave as in any macOS app: close closes the window, minimize sends it to the Dock, a click on the green button enters full screen and an Option-click on it zooms the window.
-- [ ] AC5 — Given the macOS setting "Double-click a window's title bar to" is set to Zoom (or Fill) and the main window at its normal size, when I double-click anywhere in the band outside the window buttons, then the window zooms; when I double-click the band again, then the window returns to its previous size and position. With any other value of this setting, the double-click follows that setting.
-- [ ] AC6 — Given the minimum window size of 1024 × 640 px (whole window, band included), when the window is at that size, then the active chat stays at 360 px or more and the Artifacts and diff panel at 320 px or more. All existing tests still pass.
+- [x] AC3 — Given the main window, when I press and drag anywhere in the band outside the window buttons, then the window moves with the pointer.
+- [x] AC4 — Given the window buttons, when I click them, then they behave as in any macOS app: close closes the window, minimize sends it to the Dock, a click on the green button enters full screen and an Option-click on it zooms the window.
+- [x] AC5 — Given the macOS setting "Double-click a window's title bar to" is set to Zoom (or Fill) and the main window at its normal size, when I double-click anywhere in the band outside the window buttons, then the window zooms; when I double-click the band again, then the window returns to its previous size and position. With any other value of this setting, the double-click follows that setting.
+- [x] AC6 — Given the minimum window size of 1024 × 640 px (whole window, band included), when the window is at that size, then the active chat stays at 360 px or more and the Artifacts and diff panel at 320 px or more. All existing tests still pass.
 
 ## Out of scope
 - Windows and Linux (custom title bar, window controls).
@@ -148,3 +148,10 @@ Double-click: macOS should handle it natively on a drag region and follow the sy
   - Content size equals window size with the options (it is 32 px shorter without them).
   - At 1024 × 640, the 4 regions start at y = 40 and are 592 px tall; the widths are 56, 240, 360 and 328 px.
   - Computed colors are in `oklch()`, so the band background check must reuse the `readColors` canvas conversion.
+- 2026-10-02 — Review OK (0 review loop). Romain's manual checklist, on macOS 26 in light and dark mode, all passed:
+  - AC1: no native title bar, and the window buttons are visible.
+  - AC2: the buttons are centered in the band, which has the window color.
+  - AC3: real drags move the window.
+  - AC4: native button behaviors.
+  - AC5: with the setting on Zoom, the native double-click zooms the window and a second one restores it; with Do Nothing, nothing happens. Task 5 (fallback) is therefore not needed.
+  - AC6: resizing down to the minimum clips nothing.
