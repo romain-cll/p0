@@ -22,3 +22,12 @@ export type AgentEvent =
   | { type: 'action'; kind: string; target: string }
   | { type: 'error'; message: string }
   | { type: 'end'; interrupted: boolean }
+
+/** What the renderer sends to start one run: one message of a chat. */
+export interface RunRequest {
+  runId: string
+  projectPath: string
+  prompt: string
+  permissionMode: string
+  sessionId?: string
+}
