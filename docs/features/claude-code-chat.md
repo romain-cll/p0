@@ -6,9 +6,9 @@ As a developer, I want to add a project folder and chat with Claude Code about i
 ## Acceptance criteria
 
 ### Projects
-- [ ] AC1 — Given the app is open, when I click the "+" button of the project rail, then the macOS folder picker opens; when I pick a folder, then a project named after that folder appears in the rail, with its initial, and becomes selected. If I cancel, nothing changes. If the folder is already a project, that project is selected and no duplicate is created.
-- [ ] AC2 — Given I added projects, when I quit and relaunch the app, then the same projects appear in the rail, in the same order, and the first one is selected.
-- [ ] AC3 — Given no project was added, when the app opens, then the rail shows only the "+" button, and the chat history and active chat show the empty state "Add a project to get started". The mock projects and chats no longer exist.
+- [x] AC1 — Given the app is open, when I click the "+" button of the project rail, then the macOS folder picker opens; when I pick a folder, then a project named after that folder appears in the rail, with its initial, and becomes selected. If I cancel, nothing changes. If the folder is already a project, that project is selected and no duplicate is created.
+- [x] AC2 — Given I added projects, when I quit and relaunch the app, then the same projects appear in the rail, in the same order, and the first one is selected.
+- [x] AC3 — Given no project was added, when the app opens, then the rail shows only the "+" button, and the chat history and active chat show the empty state "Add a project to get started". The mock projects and chats no longer exist.
 
 ### Chats
 - [ ] AC4 — Given a selected project, when I click "New chat" in the chat history, then a new chat appears at the top of the list and is selected, with an empty conversation and the Plan permission mode. Its title is "New chat" until the first message is sent, then the first line of that message.
@@ -545,3 +545,10 @@ The tasks are grouped by the stories proposed in Decision 1. If Romain keeps a s
     - The handler sees no `Origin` header. Security relies on the project path and mode checks, as planned.
     - `page.reload()` calls the stream's `cancel()`, about 10 ms later, but does not abort `request.signal`. Stop-on-reload must hang on `cancel()`.
     - URL parsing: `p0://api/runs` gives `host === 'api'` and `pathname === '/runs'`.
+- 2026-10-02 — Story 1 (Projects) delivered: review OK (0 review loop), and Romain's manual checks all passed (real picker, cancel, duplicate, quit and relaunch, "New chat"). AC1 to AC3 are done. AC4 is partly done: the title after the first message comes with story 2, and the Plan mode display with story 3.
+- 2026-10-02 — Follow-ups from the story 1 review, for story 2:
+  - replace the `DEFAULT_PERMISSION_MODE` constant in `App.tsx` with `AgentInfo.defaultPermissionMode`;
+  - make `adapter` required in the API handler;
+  - add a navigation guard (`will-navigate`, `setWindowOpenHandler`) before `POST /runs` exists, so that no foreign page loaded in the window can start Claude Code. The architect adds it to the story 2 plan, and Romain validates it.
+  - Each generated shadcn file must be checked: the CLI writes `import { cn } from "cn"` and adds an unrelated `cn` npm package.
+- 2026-10-02 — Out of scope, noted for a future story: an unreadable or corrupt `projects.json` shows the "no project" empty state with no error, and "+" does nothing.
