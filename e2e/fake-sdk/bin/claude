@@ -1,0 +1,6 @@
+#!/bin/sh
+# Dummy `claude` for the e2e PATH (docs/features/claude-code-chat.md, Test strategy).
+# The e2e never runs the real Claude Code: the fake SDK `query` (../query.mjs) replaces the SDK.
+# This file only lets the adapter find a `claude` on PATH; if anything ever runs it, the test fails.
+echo "fake claude: the real Claude Code must not run in e2e" >&2
+exit 1

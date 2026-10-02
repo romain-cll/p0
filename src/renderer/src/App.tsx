@@ -1,24 +1,25 @@
-import { useEffect, useReducer, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { ActiveChat } from '@/components/ActiveChat'
 import { ArtifactsPanel } from '@/components/ArtifactsPanel'
 import { ChatHistory } from '@/components/ChatHistory'
 import { ProjectRail } from '@/components/ProjectRail'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
-import { addProject, listProjects } from '@/lib/api'
+import { addProject, getAgent, listProjects, startRun, stopRun } from '@/lib/api'
 import { chatsReducer } from '@/lib/chats'
-import type { Project } from '../../shared/chat'
-
-// Story 1 has no `GET /agent` yet: the default mode is fixed here, until `AgentInfo.defaultPermissionMode` replaces it.
-const DEFAULT_PERMISSION_MODE = 'plan'
+import type { AgentEvent, AgentInfo, Project } from '../../shared/chat'
 
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([])
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const [chatId, setChatId] = useState<string | null>(null)
+  const [agent, setAgent] = useState<AgentInfo | null>(null)
   const [chats, dispatch] = useReducer(chatsReducer, {})
+  // The id of the run in progress of each chat, by chat id: what Stop asks the main process to stop.
+  const runIds = useRef(new Map<string, string>())
 
   useEffect(() => {
-    void listProjects().then((loaded) => {
+    void Promise.all([listProjects(), getAgent()]).then(([loaded, info]) => {
+      setAgent(info)
       setProjects(loaded)
       setProjectPath(loaded[0]?.path ?? null)
     })
@@ -36,10 +37,40 @@ export default function App() {
   }
 
   const createChat = (): void => {
-    if (projectPath === null) return
+    if (projectPath === null || agent === null) return
     const id = crypto.randomUUID()
-    dispatch({ type: 'create', projectPath, chatId: id, permissionMode: DEFAULT_PERMISSION_MODE })
+    dispatch({ type: 'create', projectPath, chatId: id, permissionMode: agent.defaultPermissionMode })
     setChatId(id)
+  }
+
+  // A run keeps feeding its own chat, whichever chat is shown.
+  const send = (text: string): void => {
+    if (projectPath === null || chat === null) return
+    const target = { projectPath, chatId: chat.id }
+    const runId = crypto.randomUUID()
+    let ended = false
+    const onEvent = (event: AgentEvent): void => {
+      ended ||= event.type === 'end'
+      dispatch({ type: 'event', ...target, event })
+    }
+
+    runIds.current.set(chat.id, runId)
+    dispatch({ type: 'send', ...target, text })
+    startRun(
+      { runId, projectPath, prompt: text, permissionMode: chat.permissionMode, sessionId: chat.sessionId },
+      onEvent
+    )
+      .catch((error: unknown) => {
+        onEvent({ type: 'error', message: error instanceof Error ? error.message : String(error) })
+      })
+      .then(() => {
+        if (!ended) onEvent({ type: 'end', interrupted: false })
+      })
+  }
+
+  const stop = (): void => {
+    const runId = chat === null ? undefined : runIds.current.get(chat.id)
+    if (runId !== undefined) void stopRun(runId)
   }
 
   const projectChats = projectPath === null ? null : (chats[projectPath] ?? [])
@@ -63,7 +94,7 @@ export default function App() {
         />
         <ResizablePanelGroup orientation="horizontal" className="min-w-0 flex-1">
           <ResizablePanel minSize={360}>
-            <ActiveChat hasProject={projectPath !== null} chat={chat} />
+            <ActiveChat hasProject={projectPath !== null} chat={chat} onSend={send} onStop={stop} />
           </ResizablePanel>
           <ResizableHandle className="w-2 bg-transparent after:hidden" />
           <ResizablePanel minSize={320} defaultSize={400} groupResizeBehavior="preserve-pixel-size">

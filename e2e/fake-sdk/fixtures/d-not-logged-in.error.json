@@ -1,0 +1,7 @@
+{
+  "thrown": {
+    "name": "Error",
+    "message": "Claude Code returned an error result: Not logged in · Please run /login"
+  },
+  "stderr": []
+}
