@@ -11,28 +11,28 @@ As a developer, I want to add a project folder and chat with Claude Code about i
 - [x] AC3 — Given no project was added, when the app opens, then the rail shows only the "+" button, and the chat history and active chat show the empty state "Add a project to get started". The mock projects and chats no longer exist.
 
 ### Chats
-- [ ] AC4 — Given a selected project, when I click "New chat" in the chat history, then a new chat appears at the top of the list and is selected, with an empty conversation and the Plan permission mode. Its title is "New chat" until the first message is sent, then the first line of that message.
-- [ ] AC5 — Given a selected chat, when I type a message and press Enter (or click Send), then:
+- [x] AC4 — Given a selected project, when I click "New chat" in the chat history, then a new chat appears at the top of the list and is selected, with an empty conversation and the Plan permission mode. Its title is "New chat" until the first message is sent, then the first line of that message.
+- [x] AC5 — Given a selected chat, when I type a message and press Enter (or click Send), then:
   - the message appears in the conversation and the input is cleared;
   - Claude Code answers in the project folder, and its reply appears progressively in the conversation as it arrives.
   Shift+Enter inserts a line break. An empty message cannot be sent.
-- [ ] AC6 — Given a chat with previous exchanges, when I send a new message, then Claude Code continues the same conversation: it has the previous messages of this chat, and only those.
-- [ ] AC7 — Given Claude Code performs actions while answering (reads a file, edits a file, runs a command…), when they happen, then each action appears in the conversation as one line, in order with the text, showing the kind of action and its target (file path or command).
+- [x] AC6 — Given a chat with previous exchanges, when I send a new message, then Claude Code continues the same conversation: it has the previous messages of this chat, and only those.
+- [x] AC7 — Given Claude Code performs actions while answering (reads a file, edits a file, runs a command…), when they happen, then each action appears in the conversation as one line, in order with the text, showing the kind of action and its target (file path or command).
 
 ### Permission mode
 - [ ] AC8 — Given a chat, when I look at the input area, then a selector shows the chat's permission mode. It offers the Claude Code permission modes that never ask the user, with Claude Code's labels: Plan, Accept edits, Auto, Don't ask, Bypass permissions. The default is Plan.
 - [ ] AC9 — Given I change the mode of a chat, when I send the next message in that chat, then Claude Code runs with that mode. Each chat keeps its own mode; other chats are not affected.
-- [ ] AC10 — Given a chat in Plan mode, when Claude Code answers, then no file of the project folder is created, modified or deleted, and only Claude Code's read-only commands may run.
+- [x] AC10 — Given a chat in Plan mode, when Claude Code answers, then no file of the project folder is created, modified or deleted, and only Claude Code's read-only commands may run.
 
 ### Stop and background
-- [ ] AC11 — Given Claude Code is answering in the selected chat, when I click Stop (the send button turns into Stop while it answers) or press Esc, then the answer stops. What was received stays visible, marked as interrupted, and I can send a new message.
-- [ ] AC12 — Given Claude Code is answering in chat A, when I switch to another chat or project and come back, then the answer of chat A kept going and shows everything received meanwhile. Other chats can send their own messages while chat A is answering.
+- [x] AC11 — Given Claude Code is answering in the selected chat, when I click Stop (the send button turns into Stop while it answers) or press Esc, then the answer stops. What was received stays visible, marked as interrupted, and I can send a new message.
+- [x] AC12 — Given Claude Code is answering in chat A, when I switch to another chat or project and come back, then the answer of chat A kept going and shows everything received meanwhile. Other chats can send their own messages while chat A is answering.
 
 ### Errors
-- [ ] AC13 — Given Claude Code cannot answer (CLI not installed, not logged in, or any error it returns), when I send a message, then the chat shows an error message that says what went wrong, and the app keeps working: other chats still work, and I can send again once fixed.
+- [x] AC13 — Given Claude Code cannot answer (CLI not installed, not logged in, or any error it returns), when I send a message, then the chat shows an error message that says what went wrong, and the app keeps working: other chats still work, and I can send again once fixed.
 
 ## Out of scope
-- The "Ask" permission mode and in-app permission prompts: next user story.
+- The "Ask" permission mode and in-app permission prompts, including showing Claude's plan and approving it to leave Plan mode: next user story.
 - Keeping chats and their messages between two launches: projects only are kept.
 - Chat status in the history (answering, unread, pinned).
 - Other CLIs than Claude Code.
@@ -803,3 +803,14 @@ The tasks are grouped by the stories proposed in Decision 1. If Romain keeps a s
 - 2026-10-02 — Story 2, green step (approved by Romain):
   - The e2e test "chat guard — a foreign page cannot replace the app" is wrong on the test side. After a blocked navigation, Playwright keeps it pending, and every retrying locator then waits forever. The guard itself works. The tester replaces the final visibility check with one that does not wait for navigation; what it checks stays the same. This gives a new red commit.
   - The sent message is trimmed at both ends, and a whitespace-only message is not sent.
+- 2026-10-02 — Story 2 (chat in Plan mode) delivered.
+  - Review: OK after 1 loop. The blocker was a type-only SDK import in `index.ts`, removed so that only the adapter imports the SDK.
+  - Romain's manual checks (task 17), with the real Claude Code on a real project: all passed. That covers streaming and action lines, memory per chat, Plan mode leaving `git status` clean, Stop and Esc, two chats at once, the drag-and-drop guard in dev and in the build, the look of the conversation, and no Keychain prompt.
+  - AC4 to AC7 and AC10 to AC13 are done. AC8 and AC9 come with story 3.
+- 2026-10-02 — Seen in Romain's check, expected in this story: in Plan mode, Claude writes its plan, then asks for permission to leave plan mode. That request is denied (`permissionPrompts: 'none'`). The app shows neither the plan nor a way to approve it. This belongs to the "Ask" story: show the plan and let the user approve or reject it.
+- 2026-10-02 — Follow-ups from the story 2 review, not covered by an AC, for Romain to schedule:
+  - the draft in the input is shared by every chat: text typed in chat A follows to chat B, and Enter sends it there;
+  - an error result with an empty text shows an empty alert;
+  - a chat whose Claude Code session disappeared fails on every later message;
+  - a failed stop request is an unhandled rejection in the renderer;
+  - `POST /runs` does not type-check `prompt`, `runId` and `sessionId` (defence in depth only).
