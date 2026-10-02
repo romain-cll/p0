@@ -1,11 +1,23 @@
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, dialog, protocol } from 'electron'
+import { handleApiRequest } from './api'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 const isE2E = process.env['P0_E2E'] === '1'
 
-function createWindow(): void {
+// The renderer reaches the main process with `fetch` on `p0://api` (docs/features/claude-code-chat.md, Decision 6).
+// Both privileges are required: without them the fetch fails.
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'p0', privileges: { supportFetchAPI: true, corsEnabled: true } }
+])
+
+// The e2e suite runs on a throwaway userData, so it never touches the real projects.
+if (isE2E && process.env['P0_USER_DATA_DIR']) {
+  app.setPath('userData', process.env['P0_USER_DATA_DIR'])
+}
+
+function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -27,8 +39,24 @@ function createWindow(): void {
   } else {
     void window.loadFile(join(here, '../renderer/index.html'))
   }
+
+  return window
 }
 
-void app.whenReady().then(createWindow)
+void app.whenReady().then(() => {
+  const projectsFile = join(app.getPath('userData'), 'projects.json')
+  let window: BrowserWindow
+
+  // `dialog.showOpenDialog` is looked up at each request, which lets the e2e replace it.
+  const pickFolder = async (): Promise<string | null> => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(window, {
+      properties: ['openDirectory', 'createDirectory']
+    })
+    return canceled ? null : filePaths[0]
+  }
+
+  protocol.handle('p0', (request) => handleApiRequest(request, { projectsFile, pickFolder }))
+  window = createWindow()
+})
 
 app.on('window-all-closed', () => app.quit())
