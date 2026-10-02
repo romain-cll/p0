@@ -1076,7 +1076,9 @@ test.describe('chat guard — the window only ever shows the app', () => {
       expect(navigation.url).toBe(pathToFileURL(foreign).href)
       expect(navigation.prevented, 'the guard must prevent the navigation').toBe(true)
       expect(page.url()).toBe(appUrl)
-      for (const name of REGION_NAMES) await expect(page.getByRole('region', { name })).toBeVisible()
+      // Not `toBeVisible()`: Playwright keeps the blocked navigation pending, and retrying locator actions wait for it.
+      for (const name of REGION_NAMES)
+        await expect.poll(() => page.getByRole('region', { name }).isVisible()).toBe(true)
     } finally {
       // Only matters when the guard is missing: bring the app back so the other tests can run.
       if (page.url() !== appUrl) {
