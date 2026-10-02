@@ -240,6 +240,8 @@ The tasks are grouped by the stories proposed in Decision 1. If Romain keeps a s
 6. `test:` e2e: the launch env, the `resetApp` additions, the picker stub, and the chat AC1, AC2 and AC3 tests. — covers AC1, AC2, AC3
 7. Verification and manual checklist: the real picker opens as a sheet; cancel changes nothing; quit and relaunch with `npm run dev`. — covers AC1, AC2, AC3
 
+**Story 2 — superseded.** The story 2 tasks below (8 to 16) are replaced by "Tasks — story 2, amended after story 1" further down, and story 3 tasks become 18 to 20. The original list stays here for its details: the S1 cases (a) to (i) are still the reference.
+
 **Story 2 — Chat with Claude Code, Plan mode only** (rest of AC4, AC5 to AC7, AC10 to AC13)
 8. Spike S1, run once by hand against the real service, in a scratch git repo. It makes a few real calls. The recordings are sanitized and committed as fixtures. — de-risks AC5, AC7, AC8, AC10, AC11, AC13
    - Versions: `claude --version`, and the `--permission-mode` choices from `claude --help`. The installed binary, `~/.local/share/claude/versions/2.1.287`, contains `["acceptEdits","auto","bypassPermissions","default","dontAsk","plan"]`. Choose the matching SDK release (Decision 13).
@@ -273,6 +275,207 @@ The tasks are grouped by the stories proposed in Decision 1. If Romain keeps a s
 17. `chore:` `npx shadcn add select`.
 18. `test:` then `feat:` the mode `Select` (`aria-label="Permission mode"`, options from `AgentInfo.permissionModes`) in the input addon, `setMode` in the reducer, and the chat's mode sent with each run. — covers AC8, AC9, and "Plan by default" from AC4
 19. `test:` e2e chat AC8 and AC9, then verification. Manual check with the real Claude Code: Accept edits creates the requested file, Plan does not. — covers AC8, AC9, AC10
+
+### Changes for story 2, after story 1
+- **New task 10, the navigation guard.** It comes before the run routes. New files: `src/main/navigation.ts` and its test. Story 2 tasks are renumbered 8 to 17. Story 3 tasks become 18 to 20; their content is unchanged, except that the `select` task gets the same generated-file check as task 13.
+- **Task 11 (adapter)** now covers the Claude Code adapter only. `src/main/agents/agent.ts` already exists from story 1.
+- **Task 12 (routes):**
+  - `adapter` becomes required in `ApiDeps`;
+  - `index.ts` builds the adapter and passes it;
+  - `RunRequest` is added to `src/shared/chat.ts`;
+  - stop on reload hangs on the stream's `cancel()`, as found in spike S2.
+  - The Files section is out of date on three points, already settled by S2 and the story 1 code: the `OPTIONS` route and the CORS header, and the `stream: true` privilege.
+- **Task 13 (shadcn):** every generated file is fixed: `cn` imports, registry paths, `IconPlaceholder`. If the CLI added the `cn` package, it is removed.
+- **Task 15 (App and ActiveChat):**
+  - `App` loads `AgentInfo`, and `DEFAULT_PERMISSION_MODE` is deleted;
+  - "Select or start a chat" keeps the input and Send disabled;
+  - the "no message" checks move from `listitem` to the conversation's items.
+- **Task 16 (e2e):** it reuses story 1's `addProject`, `stubFolderPicker` and `makeFolder`. The temp dir is already a real path, so no extra step is needed for the `Folder:` check.
+- **Task 17 (manual checks):** adds the drag-and-drop check. The AC10 line of the Test strategy now points to task 17, not 16.
+- **Test strategy:**
+  - a guard block;
+  - the new API route tests;
+  - a test that the app uses the agent's default mode;
+  - static checks on the generated files;
+  - a DOM contract for the conversation;
+  - the updated list of tests that change.
+- New Decisions 15 and 16, and five new Risks.
+
+### Tasks — story 2, amended after story 1
+**Story 2 — Chat with Claude Code, Plan mode only** (rest of AC4, AC5 to AC7, AC10 to AC13)
+
+8. **Spike S1**, as approved (Decision 12 = A, split). It records real SDK messages and checks the SDK inside Electron. — de-risks AC5, AC7, AC8, AC10, AC11, AC13
+   - **Done by the dev, with scripts, no window:**
+     - versions: `claude --version`, and the `--permission-mode` choices from `claude --help`; choose the matching SDK release (Decision 13);
+     - a scratch Node script, not committed, calls the SDK with `pathToClaudeCodeExecutable` set to the installed `claude` and the adapter's options. It writes each SDK message as one JSON line. Cases (a) to (i) as listed in the original story 2 task 8 above;
+     - sanitize the recordings and commit them as `e2e/fake-sdk/fixtures/*.jsonl`.
+   - **Done by Romain (a window opens, and a Keychain prompt may appear):** one short query from the main process, in `npm run dev` and in `npm run build && npm start`. He checks that:
+     - the SDK stays external in `out/main/index.js`;
+     - the installed binary is the one that runs;
+     - no Keychain prompt appears;
+     - `process.versions.node` is 24.21.0.
+9. **`test:` the fake SDK.** `e2e/fake-sdk/query.mjs`, the fixtures, and the dummy `e2e/fake-sdk/bin/claude`, committed with the executable bit. — basis for AC5 to AC13
+10. **`test:` then `feat:` the navigation guard.** It must land before `POST /runs` exists (task 12): the scheme handler cannot tell which page sent a request (no `Origin` header, per S2), so the guarantee is that only the app's page ever runs in the window. — precondition for AC5 to AC13
+    - New file: /Users/romain/projects/p0/src/main/navigation.ts.
+      ```ts
+      import type { WebContents } from 'electron'
+
+      /** True when `url` is the app's own page, ignoring query and hash. */
+      export function isAppUrl(url: string, appUrl: string): boolean {
+        try {
+          const target = new URL(url)
+          const app = new URL(appUrl)
+          target.search = target.hash = app.search = app.hash = ''
+          return target.href === app.href
+        } catch {
+          return false
+        }
+      }
+
+      /** No page but the app's can load in `contents`, and no page can open a window. */
+      export function guardNavigation(contents: Pick<WebContents, 'on' | 'setWindowOpenHandler'>, appUrl: string): void {
+        contents.on('will-navigate', (event, url) => {
+          if (!isAppUrl(url, appUrl)) event.preventDefault()
+        })
+        contents.setWindowOpenHandler(() => ({ action: 'deny' }))
+      }
+      ```
+    - Changes in /Users/romain/projects/p0/src/main/index.ts:
+      - add `const appUrl = process.env['ELECTRON_RENDERER_URL'] ?? pathToFileURL(join(here, '../renderer/index.html')).href`;
+      - in `createWindow`, call `guardNavigation(window.webContents, appUrl)` right after `new BrowserWindow`, before anything loads;
+      - `loadURL` and `loadFile` stay as they are. They are calls from the main process, which `will-navigate` never sees.
+    - **In dev**, the app URL is `http://localhost:5173`.
+      - Allowed: `http://localhost:5173/`, with any query or hash.
+      - Blocked: any other port, path or origin, and any `file://` URL.
+      - A full Vite reload is a reload, not a new navigation, so the guard does not touch it.
+    - **In the build**, only `file:///…/out/renderer/index.html` is allowed. Every other file, for example one dropped onto the window, and every `http(s)` URL is blocked.
+    - **Both modes:** every window opening is denied (`window.open`, `target="_blank"` links, shift-click, forms with a target).
+    - **Nothing else is needed:**
+      - `<webview>` stays off: `webviewTag` is false by default and the app does not set it;
+      - the CSP's `default-src 'self'` keeps foreign frames out;
+      - the scope choice is Decision 15.
+    - Tests: `src/main/navigation.test.ts`, and the two `chat guard` e2e tests (see Test strategy).
+11. **`test:` then `feat:` the Claude Code adapter**, `src/main/agents/claude-code.ts`, with its unit tests. The interface in `src/main/agents/agent.ts` exists since story 1 and does not change. — covers AC5, AC6, AC7, AC10, AC11, AC12, AC13
+12. **`test:` then `feat:` the run routes.** — covers AC5, AC11, AC12
+    - `src/shared/chat.ts` gets `RunRequest { runId; projectPath; prompt; permissionMode; sessionId? }`.
+    - In `api.ts`:
+      - `ApiDeps.adapter` becomes required (`adapter: AgentAdapter`, without `?`), and the "story 2" comment goes;
+      - `GET /agent` returns `{ permissionModes, defaultPermissionMode }` from the adapter;
+      - `POST /runs` answers 400 when `projectPath` is not in `listProjects(projectsFile)` or the mode is not in `adapter.permissionModes`. Otherwise it streams the run's `AgentEvent`s as NDJSON;
+      - the stream's `cancel()` calls `stop()`. S2 showed that `page.reload()` calls `cancel()` but never aborts `request.signal`;
+      - `POST /runs/:runId/stop` answers 204, including for an unknown or already finished run;
+      - `stopAll()` stops every running run.
+      - No `OPTIONS` route and no CORS header, as for the project routes (S2).
+    - In `index.ts`:
+      - it builds `createClaudeCodeAdapter({ query })` inside the `whenReady` callback;
+      - under `P0_E2E=1` with `P0_FAKE_SDK_QUERY` set, `query` comes from `await import(pathToFileURL(…).href)`; otherwise it is the SDK's;
+      - it passes `adapter` to `handleApiRequest`;
+      - `app.on('will-quit', stopAll)`.
+13. **`chore:` `npx shadcn add message-scroller message bubble marker input-group`.**
+    - Refuse the overwrites of `button.tsx` and `textarea.tsx`.
+    - Then fix every generated file, including `avatar.tsx` and `input.tsx`, which come along as registry dependencies:
+      - `import { cn } from "cn"` becomes `import { cn } from "@/lib/utils"`;
+      - imports from `@/registry/…` become `@/components/ui/…`;
+      - any `IconPlaceholder` becomes the matching `lucide-react` icon.
+    - Run `npm uninstall cn` if the CLI added the package. Keep `@shadcn/react`.
+    - Then add the stubs to `setup.ts`.
+    - The static checks in the Test strategy confirm the fixes. — basis
+14. **`test:` then `feat:` the reducer and the run functions.** — covers AC4, AC5, AC6, AC7, AC11, AC12, AC13
+    - `lib/chats.ts` gets the `send` and `event` actions, the title rule, and the interrupted and error items. `ChatsAction` becomes a union; the `create` action and its tests do not change.
+    - `lib/api.ts` gets `getAgent()`, `startRun(request, onEvent)` (NDJSON lines split across chunks) and `stopRun(runId)`.
+15. **`test:` red component tests first, then `feat:` App and ActiveChat.** — covers AC4, AC5, AC7, AC11, AC12, AC13
+    - `App`:
+      - on mount, it loads `listProjects()` and `getAgent()` together, then selects the first project;
+      - `DEFAULT_PERMISSION_MODE` is deleted, and "New chat" uses `AgentInfo.defaultPermissionMode`;
+      - `send` and `stop` are wired to `startRun` and `stopRun`, keyed by project path and chat id.
+    - `ActiveChat`:
+      - the Message Scroller conversation and the `InputGroup`, with Send/Stop, Enter, Shift+Enter and Esc;
+      - in the "Select or start a chat" state, the input and Send stay disabled, and Esc does nothing.
+    - The CA6 tests are removed.
+    - The "no message" checks of the existing tests move from `listitem` to the conversation's items (see Test strategy).
+16. **`test:` e2e chat AC5, AC6, AC7, AC10, AC11, AC12, AC13.** — covers the same ACs
+    - Launch env additions: `PATH = <repo>/e2e/fake-sdk/bin:/usr/bin:/bin:/usr/sbin:/sbin`, `P0_FAKE_SDK_QUERY`, `P0_FAKE_CLAUDE_STATE`.
+    - `beforeAll` guard: in the main process, `PATH` and `P0_FAKE_SDK_QUERY` have these values.
+    - `resetApp()` also restores the main process's `PATH`.
+    - It reuses `addProject`, `stubFolderPicker` and `makeFolder` from story 1, and adds `newChat` and `send`.
+17. **Verification, then the manual checklist, by Romain with a visible window.** — covers AC5, AC6, AC7, AC10, AC11, AC12, and the guard
+    - With the real Claude Code, on a real project:
+      - a streamed answer with action lines;
+      - a follow-up message that remembers the previous one;
+      - Plan mode leaves `git status` clean;
+      - Stop, with the button and with Esc;
+      - two chats answering at once.
+    - Guard, in `npm run dev` and in `npm run build && npm start`: drag a file from Finder onto the window. The app stays in place and no window opens.
+
+**Story 3 — Permission modes** (AC8, AC9), renumbered: tasks 17, 18 and 19 of the original list become 18, 19 and 20. Task 18 (`npx shadcn add select`) gets the same generated-file fixes and static checks as task 13.
+
+### Test strategy — additions for story 2
+- **Navigation guard** (task 10). Test titles start with `chat guard — `.
+  - **Unit**, `src/main/navigation.test.ts`, node environment.
+    - `isAppUrl`, dev app URL `http://localhost:5173`:
+      - allowed: `http://localhost:5173/` and `http://localhost:5173/?a=1#b`;
+      - blocked: `http://localhost:5174/`, `http://localhost:5173/other`, `https://example.com/`, a `file://` URL, `not a url`.
+    - `isAppUrl`, build app URL `file:///x/out/renderer/index.html`:
+      - allowed: the same URL with a hash;
+      - blocked: `file:///x/out/renderer/other.html`, `file:///etc/hosts`, `http://localhost:5173/`.
+    - `guardNavigation`, with a fake `webContents` that records listeners and the open handler:
+      - `will-navigate` to a foreign URL calls `preventDefault`;
+      - `will-navigate` to the app URL does not;
+      - the open handler returns `{ action: 'deny' }` for the app URL and for a foreign URL.
+    - Command: `npx vitest run -t "chat guard "`.
+  - **E2E**, on the build (`file://`), with the window still hidden. Command: `npm run test:e2e -- -g "chat guard "`.
+    - "chat guard — a foreign page cannot replace the app":
+      1. the test writes `<tempDir>/foreign.html`;
+      2. through `app.evaluate`, it adds `webContents.once('will-navigate', (event, url) => …)` in the main process. This probe runs after the app's guard and records `{ url, prevented: event.defaultPrevented }`;
+      3. it runs `location.href = <foreign file URL>` in the page;
+      4. it polls the record, which gives a positive signal rather than a timeout.
+      - Expected: `prevented: true`, `page.url()` is still the app URL, and the 4 regions are visible.
+      - `finally`: if the page has left, `loadURL(appUrl)` brings it back. This only matters for a red run.
+    - "chat guard — the page cannot open a window":
+      - in the page, `window.open('about:blank', '_blank', 'show=no')`;
+      - expected: `BrowserWindow.getAllWindows()` still has exactly 1 window;
+      - `show` is one of the features Electron turns into window options, so even without the guard the extra window stays hidden. The red run confirms this (Decision 16);
+      - `finally`: destroy any window other than the app's (compared by id).
+  - **Manual**: dropping a file onto the window, task 17. Playwright cannot drag files from the OS.
+- **API**, `src/main/api.test.ts`, story 2 part:
+  - every call passes `adapter`, which `npm run typecheck` now requires;
+  - `GET /agent` returns the adapter's `permissionModes` and `defaultPermissionMode`;
+  - `POST /runs`:
+    - 400 for a project that is not in the store, and 400 for an unknown mode; `start` is not called in either case;
+    - otherwise 200 `application/x-ndjson`: the fake adapter's events, one per line, ending with `end`;
+    - `start` gets `cwd` = the project path, and the prompt, mode and session;
+  - cancelling the response body calls the run's `stop()`;
+  - `POST /runs/:runId/stop` calls `stop()` and answers 204; an unknown id answers 204 and does nothing;
+  - `stopAll()` stops every running run;
+  - the "transport facts (spike S2)" tests now also cover `GET /agent` and `POST /runs`: no CORS header.
+- **Default mode from the agent** (follow-up 2):
+  - component test: `getAgent` resolves with `defaultPermissionMode: 'dontAsk'`; after "New chat" and a sent message, `startRun` gets `permissionMode: 'dontAsk'`;
+  - e2e chat AC5: the fake's reply shows `Mode: plan`, the default the real adapter announces through `GET /agent`;
+  - static: `grep -rn DEFAULT_PERMISSION_MODE src` prints nothing.
+- **Generated shadcn files** (follow-up 4). Run after task 13, and again after the `select` task of story 3:
+  - `grep -rn 'from "cn"' src` prints nothing;
+  - `grep -rnE '@/registry/|IconPlaceholder' src` prints nothing;
+  - `grep -n '"cn"' package.json` prints nothing;
+  - `grep -n '@shadcn/react' package.json` prints one line;
+  - `git diff dev -- src/renderer/src/components/ui/button.tsx src/renderer/src/components/ui/textarea.tsx` is empty.
+- **DOM contract of the conversation**, for the component and e2e tests of story 2:
+  - the conversation is the element with role `log` inside the "Active chat" region (`MessageScrollerContent`);
+  - each user message, reply, action line, "Interrupted" mark and error is one item of that log; an error carries `role="alert"`;
+  - the "Message" textbox and the "Send"/"Stop" button stay where story 1 put them, so the existing helpers still find them.
+- **Tests that change because of the story 1 code:**
+  - `App.test.tsx`:
+    - the header contract becomes: "on mount, `listProjects()` and `getAgent()`; the projects show once both have answered; `startRun` and `stopRun` are used from story 2 on";
+    - the two "no message" assertions, in "chat AC4 — the new chat has an empty conversation" and the CA6 test, count the items of the `log` instead of `listitem`. With Message Scroller, `listitem` never matches, so the old check would pass without checking anything;
+    - the 3 CA6 tests are removed, and chat AC5 replaces them;
+    - the "Select or start a chat" tests gain one check: Send is disabled and `startRun` is never called.
+  - `src/main/api.test.ts`: the new route tests above. The existing project and transport tests stay as they are.
+  - `src/renderer/src/lib/api.test.ts`: new tests for `getAgent`, `startRun` (NDJSON lines split across chunks) and `stopRun`. The project tests stay.
+  - `src/renderer/src/lib/chats.test.ts`: new describe blocks for `send` and `event`. The `create` tests stay.
+  - `e2e/app.spec.ts`:
+    - the launch env, `beforeAll` and `resetApp` gain the additions of task 16;
+    - the story 1 chat AC1 to AC3 tests do not change;
+    - `git diff dev -- e2e/app.spec.ts | grep -E '^-[^-].*expect'` prints nothing.
+  - The AC10 manual check now points to "S1 (g) and task 17".
 
 ### Test strategy
 - **Commands.** Run them from /Users/romain/projects/p0. They all pass the reviewer's Bash guard.
@@ -453,6 +656,19 @@ The tasks are grouped by the stories proposed in Decision 1. If Romain keeps a s
     - The docs say SDK 0.3.N bundles Claude Code 2.1.N, so 0.3.287 matches the installed 2.1.287.
     - The fake and the fixtures replay one SDK version. A silent upgrade could change message shapes under the tests.
 14. **System prompt** — options: A. `systemPrompt: { type: 'preset', preset: 'claude_code' }` / B. the SDK default, a minimal prompt — recommendation: A. The story is to chat with Claude Code; B drops Claude Code's tool guidance and conventions.
+15. **Navigation guard scope** — options: A. the guard on the main window only, as in task 10: `will-navigate` blocks every URL but the app's own page, and `setWindowOpenHandler` denies every window / B. A plus a per-launch token that every API request must carry / C. A, registered for every webContents through `app.on('web-contents-created')`, as in Electron's [security guide](https://www.electronjs.org/docs/latest/tutorial/security) — recommendation: A.
+    - Why A is enough: the scheme handler sees no `Origin`, so what matters is that no other page ever runs in the app's session:
+      - the main frame cannot navigate away;
+      - no window can be opened;
+      - no `<webview>` exists;
+      - the CSP keeps foreign frames out.
+      - Adding a frame would already need script running inside the app's page, and such a script could call the API directly anyway.
+    - B adds a secret to `lib/api.ts`, to every route and to their tests, to defend against a page that A already keeps out. The token would also sit in the app page's own memory.
+    - C covers webContents that cannot exist under A, and it also applies the rules to DevTools.
+16. **E2E check of window opening** — options: A. an e2e test calls `window.open('about:blank', '_blank', 'show=no')` and checks that the window count stays at 1, plus the unit test / B. the unit test with a fake webContents only — recommendation: A.
+    - A proves the handler is wired in the real app, which a unit test cannot.
+    - `show` is one of the `window.open` features Electron turns into window options ([window.open](https://www.electronjs.org/docs/latest/api/window-open)), so a broken guard opens only a hidden window, and the e2e stays hidden.
+    - The dev confirms this in the red run, before the guard exists. If the extra window turns out visible, switch to B and tell Romain.
 
 ### Spec ambiguities
 1. **AC10, "no command is run" (re-checked against the SDK).** In the SDK's plan mode ([SDK permissions](https://code.claude.com/docs/en/agent-sdk/permissions)):
@@ -513,6 +729,11 @@ The tasks are grouped by the stories proposed in Decision 1. If Romain keeps a s
 - **shadcn CLI.** It may offer to overwrite `button.tsx` and `textarea.tsx`, or touch `index.css`: review the diff. `@shadcn/react` needs observer stubs in jsdom, so scrolling is not tested there. The new "Messages" region sits inside "Active chat" and does not clash with the 4 region names.
 - **Shared e2e app.** Every new piece of state must be reset (here `projects.json` and the main process's `PATH`). A run left over from one test is stopped by the reload, through stream cancel. Slow scenarios must stay well under the 30 s test timeout.
 - **Dev reloads.** In dev, a full Vite reload cancels the streams, which stops every running answer.
+- **The guard stops navigations, not scripts already running in the app page.** A script injected into the renderer could call `p0://api/runs` directly. Replies are plain text rendered by React (no Markdown, no HTML), so nothing in this story can inject a script. The first story that renders Markdown or links must revisit this, and must keep `setWindowOpenHandler` denying, or opening only validated URLs outside the app.
+- **`show=no` is assumed** for the window-opening e2e (Decision 16). If Electron ignores it, the red run of that test shows a window once.
+- **Drag-and-drop is checked by hand only** (task 17), because Playwright cannot drag files from the OS onto a window.
+- **The `cn` package can hide a wrong import.** If the CLI's `cn` package stays installed, an `import { cn } from "cn"` can still compile while it no longer uses the app's `cn` (`@/lib/utils`). Only the static checks of task 13 catch it.
+- **`GET /agent` failing would hide the projects.** `App` waits for both answers before it shows the projects. The route only returns constants from the adapter, so this is unlikely. It is the same kind of gap as the corrupt `projects.json` case already noted as out of scope.
 
 ## Decisions
 - 2026-10-02 — Next story: connect Claude Code (approved by Romain)
@@ -552,3 +773,30 @@ The tasks are grouped by the stories proposed in Decision 1. If Romain keeps a s
   - add a navigation guard (`will-navigate`, `setWindowOpenHandler`) before `POST /runs` exists, so that no foreign page loaded in the window can start Claude Code. The architect adds it to the story 2 plan, and Romain validates it.
   - Each generated shadcn file must be checked: the CLI writes `import { cn } from "cn"` and adds an unrelated `cn` npm package.
 - 2026-10-02 — Out of scope, noted for a future story: an unreadable or corrupt `projects.json` shows the "no project" empty state with no error, and "+" does nothing.
+- 2026-10-02 — Story 2 plan amended after story 1: "Changes for story 2, after story 1", "Tasks — story 2, amended after story 1", "Test strategy — additions for story 2", Decisions 15 and 16, new Risks.
+- 2026-10-02 — Spike S1 results, scripts part (dev). The `e2e/fake-sdk/fixtures/` recordings are the reference.
+  - Versions and calls:
+    - Claude Code 2.1.287, `~/.local/bin/claude`; SDK `@anthropic-ai/claude-agent-sdk@0.3.287`, exact pin.
+    - Every `init` reports `claude_code_version: 2.1.287`, so the installed binary runs, not the bundled one.
+    - `apiKeySource: "none"`: the login is used.
+    - 8 queries reached the model; 3 more failed before any model call. No system dialog was observed.
+  - Facts that tasks 9 and 11 must follow, where they differ from the plan:
+    - `claude --help` calls the Manual mode `manual`, while the SDK type says `default`. Not in the list of this story.
+    - Missing executable: the SDK throws `ReferenceError: Claude Code native binary not found at …`, not `Claude Code executable not found at …`.
+    - Stop: `interrupt()` gives a `result` with `is_error: true` (`terminal_reason: "aborted_streaming"`), then the iteration throws `Claude Code returned an error result: …`. After `stop()`, both must be suppressed, so a stopped run shows "Interrupted" and no error. `resume` after a stop remembers the interrupted turn.
+    - Not logged in: the same text, "Not logged in · Please run /login", comes three times (an `assistant` with `error: "authentication_failed"`, a `result` with `is_error: true` and `subtype: "success"`, then a thrown error). The adapter emits it once.
+    - `resume` with an unknown id: no `init`, only an error `result` (`errors[]`), then a throw.
+    - `auto` mode is available on Romain's account (`init.permissionMode: "auto"`).
+    - Plan mode: the model itself refused to write files or run `touch`; only `ls` ran, and `git status --porcelain` stayed empty. The SDK denial path was recorded in `dontAsk` instead (fixture `j`): `tool_use`, then `system/permission_denied`, then a `tool_result` with the denial.
+    - Plan mode: Claude writes its plan with an allowed Write to `~/.claude/plans/<slug>.md`, outside the project. An action line points there. AC10 still holds.
+    - Time to the first text: 1.6 to 3.9 s after the query starts.
+  - Electron check: prepared as temporary code (`src/main/s1-check.ts`, 2 lines in `index.ts`, the SDK pinned in `package.json`), uncommitted, for Romain to run.
+- 2026-10-02 — Spike S1, Electron check, run by Romain with `npm run dev`. Everything matches the plan, and no macOS dialog or Keychain prompt appeared. The temporary code is reverted and was never committed.
+  - Electron's Node is 24.21.0, Electron 44.5.1, SDK 0.3.287.
+  - `pathToClaudeCodeExecutable` is `/Users/romain/.local/bin/claude`.
+  - `init`: `permissionMode: 'plan'`, `claude_code_version: '2.1.287'`, `apiKeySource: 'none'`, after 906 ms.
+  - The answer "pong" arrived in 5.9 s, with no error.
+- 2026-10-02 — Story 2 decisions (approved by Romain):
+  - Decision 15 = A: the navigation guard covers the main window; no API token.
+  - Decision 16 = A: an e2e test checks that no window can be opened.
+  - In Plan mode, the action line for the plan file Claude writes under `~/.claude/plans/` is shown like any other action.
