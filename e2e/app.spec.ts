@@ -31,6 +31,43 @@ let appPage: Page
 const INITIAL_SIZE: [number, number] = [1280, 800]
 const INITIAL_PANEL_WIDTH = 400
 
+/** e2e-guard-hardening AC1: the frontmost-app probe gives up after this delay instead of hanging. */
+const PROBE_TIMEOUT_MS = 5_000
+
+/**
+ * PID of the frontmost app, read with `osascript`.
+ * e2e-guard-hardening AC1: a probe that does not answer is killed and reported as a timeout.
+ * e2e-guard-hardening AC4: an answer that is not a positive integer PID is an error, never a PID.
+ */
+function readFrontmostPid(): number {
+  let output: string
+  try {
+    output = execFileSync(
+      'osascript',
+      [
+        '-l',
+        'JavaScript',
+        '-e',
+        "ObjC.import('AppKit'); $.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier"
+      ],
+      // SIGKILL: `execFileSync` waits for the child to exit, and a process blocked on a prompt may ignore SIGTERM.
+      { timeout: PROBE_TIMEOUT_MS, killSignal: 'SIGKILL' }
+    )
+      .toString()
+      .trim()
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ETIMEDOUT') throw error
+    throw new Error(
+      `frontmost-app probe timed out after ${PROBE_TIMEOUT_MS} ms: osascript did not answer (a macOS permission prompt may be waiting)`,
+      { cause: error }
+    )
+  }
+  if (!/^[1-9][0-9]*$/.test(output)) {
+    throw new Error(`frontmost-app probe returned an invalid answer: ${JSON.stringify(output)}`)
+  }
+  return Number(output)
+}
+
 /** e2e-quiet-runs AC1: the window is never shown or focused, and the app is not the frontmost one. */
 async function expectInBackground(): Promise<void> {
   const window = await electronApp.evaluate(({ BrowserWindow }) => {
@@ -42,16 +79,7 @@ async function expectInBackground(): Promise<void> {
     focused: false
   })
 
-  const frontmostPid = Number(
-    execFileSync('osascript', [
-      '-l',
-      'JavaScript',
-      '-e',
-      "ObjC.import('AppKit'); $.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier"
-    ])
-      .toString()
-      .trim()
-  )
+  const frontmostPid = readFrontmostPid()
   expect(frontmostPid, 'the app must not be the frontmost one').not.toBe(electronApp.process().pid)
 }
 
@@ -66,6 +94,9 @@ test.beforeAll(async () => {
 })
 
 test.afterAll(async () => {
+  // e2e-guard-hardening AC2: `electron.launch` threw in `beforeAll`, its error is the one reported,
+  // and there is no app to check or close.
+  if (!electronApp) return
   try {
     await expectInBackground()
   } finally {
