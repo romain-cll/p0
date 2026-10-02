@@ -4,13 +4,13 @@
 As Romain, I want the e2e suite to fail fast and clearly when the foreground check or the app launch goes wrong, so that a run never hangs and the real error is easy to spot.
 
 ## Acceptance criteria
-- [ ] AC1 — Given the probe that reads the frontmost app does not answer (for example, blocked by a macOS permission prompt), when `npm run test:e2e` runs, then:
+- [x] AC1 — Given the probe that reads the frontmost app does not answer (for example, blocked by a macOS permission prompt), when `npm run test:e2e` runs, then:
   - the probe is stopped after 5 s at most;
   - the suite fails with a message saying the frontmost-app probe timed out;
   - the run ends instead of hanging.
-- [ ] AC2 — Given the Electron app fails to launch, when `npm run test:e2e` runs, then the report shows the launch error and no other error coming from the end-of-suite cleanup.
-- [ ] AC3 — Given a normal run, when `npm run typecheck`, `npm test` and `npm run test:e2e` run, then they all pass as before: 20 e2e tests, one app launch, window never shown.
-- [ ] AC4 — Given the probe that reads the frontmost app returns an empty or non-numeric output, when `npm run test:e2e` runs, then the suite fails with a message saying the frontmost-app probe returned an invalid answer, and showing that answer. The frontmost check never passes without a valid PID.
+- [x] AC2 — Given the Electron app fails to launch, when `npm run test:e2e` runs, then the report shows the launch error and no other error coming from the end-of-suite cleanup.
+- [x] AC3 — Given a normal run, when `npm run typecheck`, `npm test` and `npm run test:e2e` run, then they all pass as before: 20 e2e tests, one app launch, window never shown.
+- [x] AC4 — Given the probe that reads the frontmost app returns an empty or non-numeric output, when `npm run test:e2e` runs, then the suite fails with a message saying the frontmost-app probe returned an invalid answer, and showing that answer. The frontmost check never passes without a valid PID.
 
 ## Out of scope
 - Any other change to the e2e suite or to the app.
@@ -142,3 +142,9 @@ Each failure is checked by forcing it on the real suite through the environment:
   - Before the fix, the run gives `20 passed`: the silent pass.
   - After the fix, the suite fails with the AC4 message.
 - 2026-10-02 — Roles: all changes are test code (`e2e/app.spec.ts`), so the tester makes them. Task 1 ("before" evidence, including the AC4 case) stands in for the red step. The tester then does tasks 2 and 3 plus AC4, and the reviewer runs the forced checks of task 4 again. There is no dev step.
+- 2026-10-02 — Review OK (0 review loop). The reviewer's Bash guard blocks the forced runs, so the PO re-ran them independently, with the window hidden:
+  - AC1, never-answering shim: exit 1 in 11 s, 2 "probe timed out" errors, 19 tests skipped.
+  - AC2, `ELECTRON_OVERRIDE_DIST_PATH=/nonexistent`: exit 1, 1 error (launch ENOENT).
+  - AC4, empty-output shim: exit 1, 2 "invalid answer" errors.
+  - AC3: 20 passed in 2.6 s, launch count 1.
+  - No `sleep` or Electron process was left over.
